@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+from math import cos, e, pi
 from pathlib import Path
 from robin.supply.entities import Supply
 from typing import Dict, List, Mapping, Union
@@ -50,6 +51,20 @@ def is_better_solution(
     elif sum([rus_revenue[tsp] > best_solution.get(tsp, -np.inf) for tsp in rus_revenue]) >= len(rus_revenue) // 2:
         return True
     return False
+
+
+def penalty_function(x: float, k: int) -> float:
+    """
+    Compute the penalty based on a normalized deviation.
+
+    Args:
+        x: Normalized deviation.
+        k: Scaling factor.
+
+    Returns:
+        Penalty value (float).
+    """
+    return 1 - e ** (-k * x ** 2) * (0.5 * cos(pi * x) + 0.5)
 
 
 def sns_box_plot(

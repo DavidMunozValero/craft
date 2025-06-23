@@ -8,6 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "mealpy (>=3.0.2,<4.0.0)"
 ]
 
 [tool.poetry]

@@ -3,11 +3,10 @@
 import datetime
 import numpy as np
 
-from src.craft.entities import ConflictMatrix, Boundaries, Solution
+from src.craft.entities import Boundaries, Solution, ConflictMatrix
+from .utils import penalty_function
 
 from copy import deepcopy
-from functools import cache
-from math import e, cos, pi
 from robin.supply.entities import TimeSlot, Line, Service, Supply
 from robin.supply.generator.entities import ServiceScheduler
 from typing import List, Mapping, Tuple, Union
@@ -21,7 +20,6 @@ class MealpyTimetabling:
     It maintains both the requested and updated schedules, computes operational times,
     enforces feasibility (via boundaries and conflict matrices) and evaluates the revenue.
     """
-
     def __init__(
         self,
         requested_services: List[Service],
@@ -36,7 +34,6 @@ class MealpyTimetabling:
         Initialize the MPTT instance.
 
         Args:
-            requested_schedule: The requested schedule mapping.
             revenue_behavior: The revenue behavior parameters.
             line: Mapping of line station positions.
             safe_headway: The minimum safe headway time between trains.
@@ -45,7 +42,8 @@ class MealpyTimetabling:
             alpha: Alpha parameter.
         """
         self.requested_services = requested_services
-        self.reference_schedules = {service.id: service.schedule for service in self.requested_services}
+        self.updated_services = deepcopy(self.requested_services)
+        self.reference_schedules = {service.id: service.line.timetable for service in self.requested_services}
         self.revenue = revenue_behavior
         self.line = line
 
@@ -63,8 +61,9 @@ class MealpyTimetabling:
         # Build reference solution and service indexer (for real variables)
         reference_solution = []
         service_indexer = []
-        for service_id, service_schedule in self.reference_schedules.values():
-            for _, departure_time in service_schedule[:-1]:
+        for service_id, service_schedule in self.reference_schedules.items():
+            print(f"Service {service_id} schedule: {service_schedule}")
+            for _, departure_time in tuple(service_schedule.values())[:-1]:
                 reference_solution.append(departure_time)
                 service_indexer.append(service_id)
         self.reference_solution = tuple(reference_solution)
@@ -76,12 +75,10 @@ class MealpyTimetabling:
         self.best_solution = None
         self.feasible_schedules = []
         self.dt_indexer = self.get_departure_time_indexer()
-        self.indexer = {sch: idx for idx, sch in enumerate(self.requested_schedule)}
-        self.rev_indexer = {idx: sch for idx, sch in enumerate(self.requested_schedule)}
+        self.indexer = {sch: idx for idx, sch in enumerate(self.reference_schedules)}
+        self.rev_indexer = {idx: sch for idx, sch in enumerate(self.reference_schedules)}
         self.requested_times = self.get_real_vars()
         self.scheduled_trains = np.zeros(self.n_services, dtype=bool)
-
-    # === Public Interface Methods ===
 
     def update_supply(self, path: str, solution: Solution) -> List[Service]:
         """
@@ -166,18 +163,6 @@ class MealpyTimetabling:
         self.boundaries = self._calculate_boundaries()
         self.conflict_matrix = self._get_conflict_matrix()
 
-    def update_feasible_schedules(self, solution: List[float]) -> None:
-        """
-        Update feasible schedules based on the provided solution.
-
-        Args:
-            solution: List of departure times (real variables).
-        """
-        self.update_schedule(solution)
-        # Generate all possible binary schedules (truth table) for n_services
-        train_combinations = self.truth_table(dim=self.n_services)
-        self.feasible_schedules = [S_i for S_i in train_combinations if self._departure_time_feasibility(S_i)]
-
     def objective_function(self, solution: List[float]) -> float:
         """
         Compute the fitness (objective value) for the provided solution.
@@ -191,7 +176,7 @@ class MealpyTimetabling:
         """
         solution_arr = np.array(solution, dtype=np.int32)
         self.update_schedule(solution_arr)
-        schedule = self.get_heuristic_schedule_old()
+        schedule = self.get_heuristic_schedule()
         fairness = 1.0
 
         revenue = self.get_revenue(Solution(real=solution, discrete=schedule))
@@ -209,7 +194,7 @@ class MealpyTimetabling:
         """
         S_i = solution.discrete
         im_revenue = 0.0
-        for idx, service in enumerate(self.requested_schedule):
+        for idx, service in enumerate(self.reference_schedules):
             if S_i[idx] and self.service_is_feasible(service):
                 im_revenue += self.get_service_revenue(service)
 
@@ -243,26 +228,6 @@ class MealpyTimetabling:
         tt_feasible = self._travel_times_feasibility(scheduling)
         return dt_feasible and tt_feasible
 
-    def get_best_schedule(self, solution: List[float]) -> np.array:
-        """
-        Determine the best feasible schedule based on revenue maximization.
-
-        Args:
-            solution: List of departure times from the optimization algorithm.
-
-        Returns:
-            Best feasible schedule as a numpy array.
-        """
-        self.update_feasible_schedules(solution)
-        best_schedule = None
-        best_revenue = -np.inf
-        for fs in self.feasible_schedules:
-            revenue = self.get_revenue(Solution(real=solution, discrete=fs))
-            if revenue > best_revenue:
-                best_revenue = revenue
-                best_schedule = fs
-        return np.array(best_schedule) if best_schedule is not None else np.array([])
-
     def get_heuristic_schedule(self) -> np.array:
         """
         Compute the best schedule using an older (conflict‐avoiding sequential) heuristic.
@@ -294,7 +259,7 @@ class MealpyTimetabling:
             A mapping from service to a list of operational times.
         """
         operational_times = {}
-        for service, stops in self.requested_schedule.items():
+        for service, stops in self.reference_schedules.items():
             stop_keys = list(stops.keys())
             times = []
             for i in range(len(stop_keys) - 1):
@@ -317,7 +282,7 @@ class MealpyTimetabling:
             List of departure times.
         """
         real_vars = []
-        for service, stops in self.requested_schedule.items():
+        for service, stops in self.reference_schedules.items():
             stop_keys = list(stops.keys())
             for i in range(len(stop_keys) - 1):
                 real_vars.append(stops[stop_keys[i]][1])
@@ -334,23 +299,23 @@ class MealpyTimetabling:
             Revenue value (float) for the service.
         """
         k = self.revenue[service]["k"]
-        departure_station = list(self.requested_schedule[service].keys())[0]
+        departure_station = list(self.reference_schedules[service].keys())[0]
         departure_time_delta = abs(
             self.updated_schedule[service][departure_station][1] -
-            self.requested_schedule[service][departure_station][1]
+            self.reference_schedules[service][departure_station][1]
         )
         tt_penalties = []
-        stop_keys = list(self.requested_schedule[service].keys())
+        stop_keys = list(self.reference_schedules[service].keys())
         for j, stop in enumerate(stop_keys):
             if j == 0 or j == len(stop_keys) - 1:
                 continue
-            penalty_val = self.penalty_function(
-                abs(self.updated_schedule[service][stop][1] - self.requested_schedule[service][stop][
+            penalty_val = penalty_function(
+                abs(self.updated_schedule[service][stop][1] - self.reference_schedules[service][stop][
                     1]) / self.im_mod_margin,
                 k,
             )
             tt_penalties.append(penalty_val * self.revenue[service]["tt_max_penalty"])
-        dt_penalty = self.penalty_function(departure_time_delta / self.im_mod_margin, k) * self.revenue[service][
+        dt_penalty = penalty_function(departure_time_delta / self.im_mod_margin, k) * self.revenue[service][
             "dt_max_penalty"]
         return self.revenue[service]["canon"] - dt_penalty - np.sum(tt_penalties)
 
@@ -364,7 +329,7 @@ class MealpyTimetabling:
         Returns:
             True if the service schedule is feasible, False otherwise.
         """
-        original_times = list(self.requested_schedule[service].values())
+        original_times = list(self.reference_schedules[service].values())
         updated_times = list(self.updated_schedule[service].values())
         for j in range(len(original_times) - 1):
             original_tt = original_times[j + 1][0] - original_times[j][1]
@@ -409,7 +374,7 @@ class MealpyTimetabling:
         """
         dt_indexer = {}
         i = 0
-        for service, stops in self.requested_schedule.items():
+        for service, stops in self.reference_schedules.items():
             # Each service provides (number of stops - 1) departure times.
             for _ in range(len(stops) - 1):
                 dt_indexer[i] = service
@@ -424,7 +389,7 @@ class MealpyTimetabling:
             A Boundaries object containing the real (and empty discrete) boundaries.
         """
         boundaries = []
-        for service, stops in self.requested_schedule.items():
+        for service, stops in self.reference_schedules.items():
             stop_keys = list(stops.keys())
             ot_idx = 0
             for i in range(len(stop_keys) - 1):
@@ -481,7 +446,7 @@ class MealpyTimetabling:
 
         for i, service in enumerate(self.updated_services):
             service_scheduler = ServiceScheduler(services=self.updated_services[i+1:])
-            conflicts_ids = service_scheduler.find_conflicts(service)
+            conflicts_ids = service_scheduler.find_conflicts(new_service=service, safety_gap=self.safe_headway)
             for conflict_id in conflicts_ids:
                 conflict_matrix.set(service.id, conflict_id, True)
         return conflict_matrix
@@ -502,33 +467,3 @@ class MealpyTimetabling:
             if not self.service_is_feasible(service):
                 return False
         return True
-
-    @staticmethod
-    def penalty_function(x: float, k: int) -> float:
-        """
-        Compute the penalty based on a normalized deviation.
-
-        Args:
-            x: Normalized deviation.
-            k: Scaling factor.
-
-        Returns:
-            Penalty value (float).
-        """
-        return 1 - e ** (-k * x ** 2) * (0.5 * cos(pi * x) + 0.5)
-
-    @cache
-    def truth_table(self, dim: int) -> List[List[int]]:
-        """
-        Generate a truth table (all binary combinations) for the given dimension.
-
-        Args:
-            dim: Dimension of the truth table.
-
-        Returns:
-            A list of binary combinations.
-        """
-        if dim < 1:
-            return [[]]
-        sub_tt = self.truth_table(dim - 1)
-        return [row + [val] for row in sub_tt for val in [0, 1]]

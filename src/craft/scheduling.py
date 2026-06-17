@@ -1,8 +1,12 @@
 """Schedule management for railway services."""
 
-import numpy as np
 from copy import deepcopy
-from typing import Mapping, List, Tuple, Callable
+from pathlib import Path
+from typing import List, Mapping, Union
+
+import numpy as np
+
+from robin.supply.entities import Supply
 
 
 class ScheduleManager:
@@ -96,3 +100,28 @@ class ScheduleManager:
                 dt_indexer[i] = service
                 i += 1
         return dt_indexer
+
+
+def get_schedule_from_supply(
+    path: Union[Path, None] = None,
+    supply: Union[Supply, None] = None,
+) -> Mapping[str, Mapping[str, List[int]]]:
+    """Build a per-service schedule mapping from a robin ``Supply``.
+
+    The schedule is expressed in minutes since midnight, with each stop
+    mapped to ``[arrival_time, departure_time]``. Either ``path`` (to a
+    supply YAML file) or a ready ``supply`` object must be provided.
+    """
+    if not supply:
+        supply = Supply.from_yaml(path=path)
+    requested_schedule = {}
+    for service in supply.services:
+        requested_schedule[service.id] = {}
+        time = service.time_slot.start
+        delta = time.total_seconds() // 60
+        for stop in service.line.timetable:
+            arrival_time = delta + int(service.line.timetable[stop][0])
+            departure_time = delta + int(service.line.timetable[stop][1])
+            requested_schedule[service.id][stop] = [arrival_time, departure_time]
+
+    return requested_schedule

@@ -3,14 +3,14 @@
 import datetime
 import numpy as np
 
-from ..entities import Boundaries, Solution, ConflictMatrix
+from ..common import Boundaries, Solution, ConflictMatrix
 
 from copy import deepcopy
 from robin.supply.entities import TimeSlot, Line, Service, Supply
 from robin.supply.generator.entities import ServiceScheduler
 
-from .revenue import RevenueCalculator
-from .scheduling import ScheduleManager
+from ..revenue import RevenueCalculator
+from ..scheduling import ScheduleManager
 from typing import List, Mapping, Tuple, Union
 
 

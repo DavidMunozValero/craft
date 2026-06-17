@@ -1,140 +1,29 @@
-"""GSA - Gravitational Search Algorithm implementation."""
+"""Gravitational Search Algorithm (GSA) for railway timetabling.
 
-import math
-import numpy as np
-import pandas as pd
+Custom hybrid GSA handling both real (departure times) and discrete
+(scheduled-services mask) decision variables. The dynamic elements and the
+gravitational-field primitives live in :mod:`craft.gsa.elements` and
+:mod:`craft.gsa.fields` respectively; the shared ``Boundaries``/``Solution``
+containers come from :mod:`craft.common`.
+"""
+
+import os
 import random
 import time
-import os
+from typing import List, Union
 
-from functools import lru_cache
-from scipy.spatial.distance import euclidean, hamming
-from typing import Any, List, Mapping, Tuple, Union
+import numpy as np
+import pandas as pd
 
-from copy import deepcopy
-
-
-class Boundaries:
-    def __init__(
-        self,
-        real: List[Union[Any, Tuple[float, float]]],
-        discrete: List[Union[Any, Tuple[int, int]]]
-    ) -> None:
-        self.real = real
-        self.discrete = discrete
-
-
-class Solution:
-    def __init__(self, real, discrete) -> None:
-        self.real = real
-        self.discrete = discrete
-
-
-class Velocity:
-    def __init__(self, real, discrete) -> None:
-        self.real = real
-        self.discrete = discrete
-
-
-class Acceleration:
-    def __init__(self, real, discrete) -> None:
-        self.real = real
-        self.discrete = discrete
-
-
-class GConstant:
-    def __init__(self, real, discrete) -> None:
-        self.real = real
-        self.discrete = discrete
-
-
-def mass_calculation(fit: np.ndarray) -> np.ndarray:
-    f_min, f_max = fit.min(), fit.max()
-    if f_max == f_min:
-        return np.ones(fit.shape) / len(fit)
-    normalized_fit = (fit - f_min) / (f_max - f_min)
-    mass = normalized_fit / normalized_fit.sum()
-    return mass
-
-
-def g_bin_constant(curr_iter: int, max_iters: int, g_zero: float = 1) -> float:
-    return g_zero * (1 - (curr_iter / max_iters))
-
-
-def g_real_constant(curr_iter: int, max_iters: int, alpha: float = 20, g_zero: float = 100) -> float:
-    return g_zero * np.exp(- ((alpha * curr_iter) / max_iters))
-
-
-@lru_cache(maxsize=None)
-def compute_x(i: int) -> float:
-    if i == 0:
-        return 0.7
-    prev_x = compute_x(i - 1)
-    return 2.3 * prev_x ** 2 * np.sin(np.pi * prev_x)
-
-
-def sin_chaotic_term(curr_iter: int, value: float) -> Tuple[float, float]:
-    x = compute_x(curr_iter)
-    return x * value, x
-
-
-def g_field(
-    population_size: int,
-    dim: int,
-    pos: np.ndarray,
-    mass: np.ndarray,
-    current_iter: int,
-    max_iters: int,
-    gravity_constant: float,
-    r_power: int,
-    elitist_check: bool,
-    real: bool
-) -> np.ndarray:
-    """Calculate gravitational field."""
-    if dim == 0:
-        return np.array([])
-    
-    pos = np.asarray(pos, dtype=float)
-    if pos.size == 0:
-        return np.array([])
-    
-    if pos.ndim == 1:
-        if pos.shape[0] == population_size * dim:
-            pos = pos.reshape(population_size, dim)
-        elif pos.shape[0] == dim:
-            pos = pos.reshape(1, dim)
-        else:
-            raise ValueError(f"Cannot reshape pos of shape {pos.shape} to ({population_size}, {dim})")
-    if not dim > 0:
-        return np.array([])
-
-    final_per = 2
-    if elitist_check:
-        k_best = final_per + (1 - current_iter / max_iters) * (100 - final_per)
-        k_best = round(population_size * k_best / 100)
-    else:
-        k_best = population_size
-
-    ds = sorted(range(len(mass)), key=lambda k: mass[k], reverse=True)
-
-    acc = np.zeros((population_size, dim))
-
-    for r in range(population_size):
-        for ii in range(k_best):
-            z = ds[ii]
-            if z != r:
-                x = pos[r, :]
-                y = pos[z, :]
-                if real:
-                    radius = euclidean(x, y)
-                else:
-                    radius = hamming(x, y)
-
-                for k in range(dim):
-                    n = random.random()
-                    acc[r, k] += n * gravity_constant * (mass[z] / (radius + np.finfo(float).eps)) * (pos[z, k] - pos[r, k])
-
-    return acc
+from ..common import Boundaries, Solution
+from .elements import Acceleration, GConstant, Velocity
+from .fields import (
+    g_bin_constant,
+    g_field,
+    g_real_constant,
+    mass_calculation,
+    sin_chaotic_term,
+)
 
 
 class GSA:
@@ -181,7 +70,7 @@ class GSA:
         for sol in range(population_size):
             real_part = pos_r[sol, :] if self.r_dim > 0 else np.array([])
             discrete_part = pos_d[sol, :] if self.d_dim > 0 else np.array([])
-            
+
             iters = 0
             while not self.is_feasible(Solution(real=real_part, discrete=discrete_part)) and iters < 100:
                 if self.r_dim > 0:
@@ -195,7 +84,7 @@ class GSA:
                         for dd_lb, dd_ub in self.boundaries.discrete
                     ])
                 iters += 1
-            
+
             solution = Solution(real=real_part, discrete=discrete_part)
             population.append(solution)
         return population
@@ -240,25 +129,21 @@ class GSA:
         history = pd.DataFrame(columns=columns)
 
         print(f"GSA starting: {population_size} agents, {iters} iterations")
-        
+
         for current_iter in range(iters):
             print(f"First iteration starting...")
-            
+
             for i in range(population_size):
                 solution = pos[i]
-                # print(f"  Agent {i}: real type={type(solution.real)}, shape={getattr(solution.real, 'shape', 'N/A')}")
                 fitness, accuracy = self.objective_function(solution)
-                # print(f"  Agent {i} done, fitness={fitness}")
                 fit[i] = fitness
-            
+
             print(f"All {population_size} agents evaluated, best={max(fit)}")
 
-            # Debug print
             print(f"Computing mass...")
             mass = mass_calculation(fit=fit)
             print(f"Mass computed: {mass[:3]}...")
 
-            # Debug print
             print(f"Computing gravity constant...")
 
             gravity_constant = self._calculate_gravitational_constants(
@@ -280,8 +165,7 @@ class GSA:
                 elitist_check=elitist_check
             )
             print(f"Acceleration computed")
-            
-            # Debug print
+
             print("Moving agents...")
             pos, vel = self._move(
                 position=pos,
@@ -344,13 +228,13 @@ class GSA:
         elitist_check: bool = True
     ) -> List[Acceleration]:
         real_arr = np.array([p.real for p in pos], dtype=float)
-        
+
         if real_arr.ndim == 1:
             if self.r_dim > 0 and real_arr.shape[0] == population_size * self.r_dim:
                 real_arr = real_arr.reshape(population_size, self.r_dim)
             elif real_arr.shape[0] == self.r_dim:
                 real_arr = real_arr.reshape(1, self.r_dim)
-        
+
         if self.r_dim > 0:
             acc_r = g_field(
                 population_size=population_size,
@@ -422,18 +306,17 @@ class GSA:
         population: int = 1,
         v_max: int = 6,
         repair_solution: bool = False
-    ) -> Tuple[List[Solution], List[Velocity]]:
+    ):
         for i in range(population):
             if self.r_dim > 0:
-                # Ensure real parts are arrays
                 pos_real = np.asarray(position[i].real)
                 acc_real = np.asarray(acceleration[i].real)
                 vel_real = np.asarray(velocity[i].real)
-                
+
                 r1 = np.random.random(pos_real.shape)
                 new_vel_real = vel_real * r1 + acc_real
                 new_pos_real = np.round(pos_real + new_vel_real)
-                
+
                 velocity[i].real = new_vel_real
                 position[i].real = new_pos_real
 

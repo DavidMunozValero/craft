@@ -114,6 +114,20 @@ class RevenueSimulator:
         """
         revenue = {}
         tsp_k = {}
+        tsp_importance = {}
+        
+        tsp_groups = {}
+        for service in self.supply.services:
+            if service.tsp.id not in tsp_groups:
+                tsp_groups[service.tsp.id] = []
+            tsp_groups[service.tsp.id].append(service)
+        
+        for tsp_id, services in tsp_groups.items():
+            n_services_tsp = len(services)
+            random_importances = np.random.random(n_services_tsp)
+            normalized = random_importances / random_importances.sum()
+            tsp_importance[tsp_id] = iter(normalized)
+
         for service in self.supply.services:
             sta_coords = [sta.coordinates for sta in service.line.stations]
             distances = [geodesic(sta_coords[i], sta_coords[i + 1]).km for i in range(len(sta_coords) - 1)]
@@ -125,18 +139,20 @@ class RevenueSimulator:
             max_penalty = total_canon * 0.3
             dt_penalty = np.round(max_penalty * 0.35, 2)
             tt_penalty = np.round((max_penalty - dt_penalty) / (len(sta_coords) - 1), 2)
-            if service.tsp.id not in tsp_k:
+            k = tsp_k.get(service.tsp.id)
+            if k is None:
                 k = np.round(loguniform.rvs(0.01, 100, 1), 2)
                 tsp_k[service.tsp.id] = k
-            else:
-                k = tsp_k[service.tsp.id]
+
+            importance = next(tsp_importance[service.tsp.id])
 
             revenue[service.id] = {
                 'canon': total_canon,
                 'ru': service.tsp.id,
                 'k': k,
                 'dt_max_penalty': dt_penalty,
-                'tt_max_penalty': tt_penalty
+                'tt_max_penalty': tt_penalty,
+                'importance': importance
             }
 
         return revenue

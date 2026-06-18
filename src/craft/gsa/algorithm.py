@@ -37,9 +37,7 @@ class GSA:
         custom_repair: Union[None, callable] = None
     ) -> None:
         self.objective_function = objective_function
-        if is_feasible is None:
-            self.is_feasible = lambda _: True
-        self.is_feasible = is_feasible
+        self.is_feasible = is_feasible if is_feasible is not None else (lambda _: True)
         self.custom_repair = custom_repair
         self.r_dim = r_dim
         self.d_dim = d_dim
@@ -101,18 +99,26 @@ class GSA:
         w_max: float = 20.0,
         w_min: float = 1e-10,
         save_population: bool = False,
+        seed: Union[int, None] = None,
         verbose: bool = True
     ) -> pd.DataFrame:
+        if seed is not None:
+            self.set_seed(seed)
+
         vel = [
             Solution(np.zeros(self.r_dim, dtype=np.float64), np.zeros(self.d_dim, dtype=np.float64))
             for _ in range(population_size)
         ]
         fit = np.zeros(population_size, dtype=np.float64)
+        accs = np.zeros(population_size, dtype=np.float64)
         mass = np.zeros(population_size, dtype=np.float64)
 
-        g_best = Solution(np.zeros(self.r_dim, dtype=np.int64), np.zeros(self.d_dim, dtype=np.int64))
+        g_best = Solution(
+            real=np.zeros(self.r_dim, dtype=np.float64),
+            discrete=np.zeros(self.d_dim, dtype=np.int64),
+        )
         g_best_score = float("-inf")
-        best_acc = 0.0
+        g_best_acc = 0.0
 
         if initial_population is None:
             pos = self._get_initial_positions(population_size)
@@ -128,23 +134,44 @@ class GSA:
         columns = ['Iteration', 'Fitness', 'Accuracy', 'ExecutionTime', 'Discrete', 'Real']
         history = pd.DataFrame(columns=columns)
 
-        print(f"GSA starting: {population_size} agents, {iters} iterations")
+        if verbose:
+            print(f"GSA starting: {population_size} agents, {iters} iterations")
 
         for current_iter in range(iters):
-            print(f"First iteration starting...")
-
             for i in range(population_size):
-                solution = pos[i]
-                fitness, accuracy = self.objective_function(solution)
+                fitness, accuracy = self.objective_function(pos[i])
                 fit[i] = fitness
+                accs[i] = accuracy
 
-            print(f"All {population_size} agents evaluated, best={max(fit)}")
+            best_idx = int(np.argmax(fit))
+            if fit[best_idx] > g_best_score:
+                g_best_score = float(fit[best_idx])
+                g_best_acc = float(accs[best_idx])
+                g_best = Solution(
+                    real=np.array(pos[best_idx].real, dtype=np.float64),
+                    discrete=np.array(pos[best_idx].discrete, dtype=np.int64),
+                )
 
-            print(f"Computing mass...")
+            convergence_curve[current_iter] = g_best_score
+            best_solution_history.append(
+                Solution(
+                    real=np.array(g_best.real, dtype=np.float64),
+                    discrete=np.array(g_best.discrete, dtype=np.int64),
+                )
+            )
+            history.loc[current_iter] = [
+                current_iter + 1,
+                g_best_score,
+                g_best_acc,
+                time.time() - timer_start,
+                g_best.discrete,
+                g_best.real,
+            ]
+
+            if verbose:
+                print(f'At iteration {current_iter + 1} the best fitness is {g_best_score}')
+
             mass = mass_calculation(fit=fit)
-            print(f"Mass computed: {mass[:3]}...")
-
-            print(f"Computing gravity constant...")
 
             gravity_constant = self._calculate_gravitational_constants(
                 current_iter=current_iter,
@@ -164,9 +191,7 @@ class GSA:
                 r_power=r_power,
                 elitist_check=elitist_check
             )
-            print(f"Acceleration computed")
 
-            print("Moving agents...")
             pos, vel = self._move(
                 position=pos,
                 velocity=vel,
@@ -176,24 +201,16 @@ class GSA:
                 repair_solution=repair_solution
             )
 
-            convergence_curve[current_iter] = g_best_score
-            best_solution_history.append(g_best)
-
-            if verbose:
-                print(f'At iteration {current_iter + 1} the best fitness is {g_best_score}')
-
-            for i, individual in enumerate(pos):
-                if not self.is_feasible(individual):
-                    print(f"Individual {i} is not feasible")
-
         timer_end = time.time()
         self.end_time = time.strftime("%Y-%m-%d-%H-%M-%S")
         self.execution_time = timer_end - timer_start
         self.convergence = convergence_curve
         self.solution_history = best_solution_history
+        self.best_solution = g_best
+        self.best_fitness = g_best_score
 
         if verbose:
-            print(g_best)
+            print(f"GSA finished: best fitness = {g_best_score}")
 
         return history
 
@@ -296,7 +313,7 @@ class GSA:
         else:
             l1_d = np.array([])
 
-        return Solution(real=np.array(l1_r, dtype=float), discrete=np.array(l1_d, dtype=float))
+        return Solution(real=np.array(l1_r, dtype=float), discrete=np.array(l1_d, dtype=int))
 
     def _move(
         self,
@@ -315,7 +332,7 @@ class GSA:
 
                 r1 = np.random.random(pos_real.shape)
                 new_vel_real = vel_real * r1 + acc_real
-                new_pos_real = np.round(pos_real + new_vel_real)
+                new_pos_real = pos_real + new_vel_real
 
                 velocity[i].real = new_vel_real
                 position[i].real = new_pos_real

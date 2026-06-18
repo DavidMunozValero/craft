@@ -9,7 +9,6 @@ from functools import lru_cache
 from typing import Tuple
 
 import numpy as np
-import random
 from scipy.spatial.distance import euclidean, hamming
 
 
@@ -105,8 +104,7 @@ def g_field(
                 else:
                     radius = hamming(x, y)
 
-                for k in range(dim):
-                    n = random.random()
-                    acc[r, k] += n * gravity_constant * (mass[z] / (radius + np.finfo(float).eps)) * (pos[z, k] - pos[r, k])
+                n = np.random.random(dim)
+                acc[r, :] += n * gravity_constant * (mass[z] / (radius + np.finfo(float).eps)) * (pos[z, :] - pos[r, :])
 
     return acc

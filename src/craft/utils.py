@@ -24,7 +24,7 @@ def get_rus_revenue(supply: Supply, df: pd.DataFrame) -> Mapping[str, float]:
         Mapping from RU (TSP) name to its total revenue.
     """
     services_tsp = {service.id: service.tsp.name for service in supply.services}
-    df['tsp'] = df['service'].apply(lambda service_id: services_tsp.get(service_id, np.NaN))
+    df['tsp'] = df['service'].apply(lambda service_id: services_tsp.get(service_id, np.nan))
     tsp_revenue = df.groupby('tsp').agg({'price': 'sum'}).to_dict()['price']
     return tsp_revenue
 

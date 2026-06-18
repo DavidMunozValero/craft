@@ -20,16 +20,56 @@ from craft.runner import ExperimentConfig, ExperimentRunner
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run mealpy timetabling optimization.")
-    parser.add_argument("-a", "--algorithm", choices=["ga", "de", "pso", "sca"], default="ga", help="mealpy algorithm (default: ga)")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42)")
-    parser.add_argument("--pop-size", type=int, default=20, help="Population size (default: 20)")
-    parser.add_argument("--epoch", type=int, default=50, help="Number of epochs (default: 50)")
-    parser.add_argument("--n-services", type=int, default=25, help="Number of services to generate (default: 25)")
-    parser.add_argument("--supply", type=Path, default=None, help="Load an existing supply YAML instead of generating one")
-    parser.add_argument("-o", "--output", type=Path, default=None, help="Output supply YAML path for generation (default: auto)")
-    parser.add_argument("--supply-config", type=Path, default=Path("configs/supply_generator/supply_data.yaml"), help="Supply config YAML")
-    parser.add_argument("--generator-config", type=Path, default=Path("configs/supply_generator/config.yaml"), help="Generator config YAML")
-    parser.add_argument("--with-conflicts", action="store_true", help="Generate services with conflicts")
+    parser.add_argument(
+        "-a",
+        "--algorithm",
+        choices=["ga", "de", "pso", "sca"],
+        default="ga",
+        help="mealpy algorithm (default: ga)",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed (default: 42)"
+    )
+    parser.add_argument(
+        "--pop-size", type=int, default=20, help="Population size (default: 20)"
+    )
+    parser.add_argument(
+        "--epoch", type=int, default=50, help="Number of epochs (default: 50)"
+    )
+    parser.add_argument(
+        "--n-services",
+        type=int,
+        default=25,
+        help="Number of services to generate (default: 25)",
+    )
+    parser.add_argument(
+        "--supply",
+        type=Path,
+        default=None,
+        help="Load an existing supply YAML instead of generating one",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Output supply YAML path for generation (default: auto)",
+    )
+    parser.add_argument(
+        "--supply-config",
+        type=Path,
+        default=Path("configs/supply_generator/supply_data.yaml"),
+        help="Supply config YAML",
+    )
+    parser.add_argument(
+        "--generator-config",
+        type=Path,
+        default=Path("configs/supply_generator/config.yaml"),
+        help="Generator config YAML",
+    )
+    parser.add_argument(
+        "--with-conflicts", action="store_true", help="Generate services with conflicts"
+    )
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
     args = parser.parse_args()
 
@@ -56,7 +96,9 @@ def main() -> None:
     else:
         results = runner.run()
 
-    print(f"\n{args.algorithm.upper()} results: fitness={results['fitness']:.2f}, scheduled={results['n_scheduled']}/{results['n_total']}")
+    print(
+        f"\n{args.algorithm.upper()} results: fitness={results['fitness']:.2f}, scheduled={results['n_scheduled']}/{results['n_total']}"
+    )
 
 
 if __name__ == "__main__":

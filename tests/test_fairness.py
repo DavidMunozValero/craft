@@ -13,7 +13,7 @@ class TestJainIndex:
 
     def test_maximum_inequality(self):
         idx = FairnessMetrics().jain_index([0, 0, 0, 100])
-        expected = (100 ** 2) / (4 * (0 + 0 + 0 + 100 ** 2))
+        expected = (100**2) / (4 * (0 + 0 + 0 + 100**2))
         assert idx == pytest.approx(expected, abs=1e-4)
 
     def test_empty_returns_one(self):
@@ -24,7 +24,7 @@ class TestJainIndex:
 
     def test_two_values(self):
         idx = FairnessMetrics().jain_index([1, 3])
-        expected = (4 ** 2) / (2 * (1 + 9))
+        expected = (4**2) / (2 * (1 + 9))
         assert idx == pytest.approx(expected)
 
 
@@ -67,7 +67,9 @@ class TestJainsFairnessIndex:
             "s2": {"ru": "ru2", "importance": 1.0},
             "s3": {"ru": "ru3", "importance": 1.0},
         }
-        fairness, ratios = FairnessMetrics.jains_fairness_index(scheduled, capacities, revenue)
+        fairness, ratios = FairnessMetrics.jains_fairness_index(
+            scheduled, capacities, revenue
+        )
         assert fairness == pytest.approx(1.0)
 
     def test_none_scheduled_returns_one(self):
@@ -77,7 +79,9 @@ class TestJainsFairnessIndex:
             "s1": {"ru": "ru1", "importance": 1.0},
             "s2": {"ru": "ru2", "importance": 1.0},
         }
-        fairness, _ = FairnessMetrics.jains_fairness_index(scheduled, capacities, revenue)
+        fairness, _ = FairnessMetrics.jains_fairness_index(
+            scheduled, capacities, revenue
+        )
         assert fairness == 1.0
 
     def test_partial_scheduled(self):
@@ -88,7 +92,9 @@ class TestJainsFairnessIndex:
             "s2": {"ru": "ru2", "importance": 1.0},
             "s3": {"ru": "ru1", "importance": 1.0},
         }
-        fairness, scheduled_sum = FairnessMetrics.jains_fairness_index(scheduled, capacities, revenue)
+        fairness, scheduled_sum = FairnessMetrics.jains_fairness_index(
+            scheduled, capacities, revenue
+        )
         assert 0.0 <= fairness <= 1.0
         assert "ru1" in scheduled_sum
         assert scheduled_sum["ru1"] == pytest.approx(2.0)

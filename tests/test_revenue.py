@@ -5,7 +5,7 @@ from math import cos, e, pi
 import numpy as np
 import pytest
 
-from craft.revenue import RevenueCalculator, RevenueSimulator, penalty_function
+from craft.revenue import RevenueSimulator, penalty_function
 
 
 class TestPenaltyFunction:
@@ -23,7 +23,7 @@ class TestPenaltyFunction:
 
     def test_formula_matches(self):
         x, k = 0.3, 5
-        expected = 1 - e ** (-k * x ** 2) * (0.5 * cos(pi * x) + 0.5)
+        expected = 1 - e ** (-k * x**2) * (0.5 * cos(pi * x) + 0.5)
         assert penalty_function(x, k) == pytest.approx(expected)
 
 
@@ -76,6 +76,8 @@ class TestRevenueCalculator:
         service_ids = list(rc.reference_schedules.keys())
         mask = np.array([True] * len(service_ids))
         total = rc.compute_total_revenue(
-            service_ids, mask, timetabling.schedule_manager.is_service_feasible,
+            service_ids,
+            mask,
+            timetabling.schedule_manager.is_service_feasible,
         )
         assert total >= 0

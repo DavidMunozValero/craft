@@ -24,14 +24,15 @@ def get_rus_revenue(supply: Supply, df: pd.DataFrame) -> Mapping[str, float]:
         Mapping from RU (TSP) name to its total revenue.
     """
     services_tsp = {service.id: service.tsp.name for service in supply.services}
-    df['tsp'] = df['service'].apply(lambda service_id: services_tsp.get(service_id, np.nan))
-    tsp_revenue = df.groupby('tsp').agg({'price': 'sum'}).to_dict()['price']
-    return tsp_revenue
+    df["tsp"] = df["service"].apply(
+        lambda service_id: services_tsp.get(service_id, np.nan)
+    )
+    tsp_revenue = df.groupby("tsp").agg({"price": "sum"}).to_dict()["price"]
+    return dict(tsp_revenue)
 
 
 def is_better_solution(
-    rus_revenue: Mapping[str, float],
-    best_solution: Mapping[str, float]
+    rus_revenue: Mapping[str, float], best_solution: Mapping[str, float]
 ) -> bool:
     """Check if the current solution is better than the best solution so far.
 
@@ -49,6 +50,9 @@ def is_better_solution(
         return True
     elif len(rus_revenue) > len(best_solution):
         return True
-    elif sum([rus_revenue[tsp] > best_solution.get(tsp, -np.inf) for tsp in rus_revenue]) >= len(rus_revenue) // 2:
+    elif (
+        sum([rus_revenue[tsp] > best_solution.get(tsp, -np.inf) for tsp in rus_revenue])
+        >= len(rus_revenue) // 2
+    ):
         return True
     return False

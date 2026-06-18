@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from craft.runner import DEFAULT_GENERATOR_CONFIG, DEFAULT_SUPPLY_CONFIG, ExperimentConfig, build_mealpy_algorithm
+from craft.runner import (
+    DEFAULT_GENERATOR_CONFIG,
+    DEFAULT_SUPPLY_CONFIG,
+    ExperimentConfig,
+    build_mealpy_algorithm,
+)
 
 
 class TestExperimentConfig:

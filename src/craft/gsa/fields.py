@@ -19,17 +19,19 @@ def mass_calculation(fit: np.ndarray) -> np.ndarray:
         return np.ones(fit.shape) / len(fit)
     normalized_fit = (fit - f_min) / (f_max - f_min)
     mass = normalized_fit / normalized_fit.sum()
-    return mass
+    return np.asarray(mass)
 
 
 def g_bin_constant(curr_iter: int, max_iters: int, g_zero: float = 1) -> float:
     """Linearly decreasing gravitational constant for the discrete space."""
-    return g_zero * (1 - (curr_iter / max_iters))
+    return float(g_zero * (1 - (curr_iter / max_iters)))
 
 
-def g_real_constant(curr_iter: int, max_iters: int, alpha: float = 20, g_zero: float = 100) -> float:
+def g_real_constant(
+    curr_iter: int, max_iters: int, alpha: float = 20, g_zero: float = 100
+) -> float:
     """Exponentially decreasing gravitational constant for the real space."""
-    return g_zero * np.exp(- ((alpha * curr_iter) / max_iters))
+    return float(g_zero * np.exp(-((alpha * curr_iter) / max_iters)))
 
 
 @lru_cache(maxsize=None)
@@ -38,7 +40,7 @@ def compute_x(i: int) -> float:
     if i == 0:
         return 0.7
     prev_x = compute_x(i - 1)
-    return 2.3 * prev_x ** 2 * np.sin(np.pi * prev_x)
+    return float(2.3 * prev_x**2 * np.sin(np.pi * prev_x))
 
 
 def sin_chaotic_term(curr_iter: int, value: float) -> Tuple[float, float]:
@@ -57,7 +59,7 @@ def g_field(
     gravity_constant: float,
     r_power: int,
     elitist_check: bool,
-    real: bool
+    real: bool,
 ) -> np.ndarray:
     """Calculate the gravitational field (acceleration) acting on agents.
 
@@ -78,7 +80,9 @@ def g_field(
         elif pos.shape[0] == dim:
             pos = pos.reshape(1, dim)
         else:
-            raise ValueError(f"Cannot reshape pos of shape {pos.shape} to ({population_size}, {dim})")
+            raise ValueError(
+                f"Cannot reshape pos of shape {pos.shape} to ({population_size}, {dim})"
+            )
     if not dim > 0:
         return np.array([])
 
@@ -105,6 +109,11 @@ def g_field(
                     radius = hamming(x, y)
 
                 n = np.random.random(dim)
-                acc[r, :] += n * gravity_constant * (mass[z] / (radius + np.finfo(float).eps)) * (pos[z, :] - pos[r, :])
+                acc[r, :] += (
+                    n
+                    * gravity_constant
+                    * (mass[z] / (radius + np.finfo(float).eps))
+                    * (pos[z, :] - pos[r, :])
+                )
 
     return acc

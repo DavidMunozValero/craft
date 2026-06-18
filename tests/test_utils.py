@@ -1,18 +1,18 @@
 """Tests for craft.utils: get_rus_revenue, is_better_solution."""
 
-import numpy as np
 import pandas as pd
-import pytest
 
 from craft.utils import get_rus_revenue, is_better_solution
 
 
 class TestGetRusRevenue:
     def test_basic_aggregation(self, supply):
-        df = pd.DataFrame({
-            "service": [s.id for s in supply.services[:4]],
-            "price": [10.0, 20.0, 30.0, 40.0],
-        })
+        df = pd.DataFrame(
+            {
+                "service": [s.id for s in supply.services[:4]],
+                "price": [10.0, 20.0, 30.0, 40.0],
+            }
+        )
         revenue = get_rus_revenue(supply, df)
         assert isinstance(revenue, dict)
         assert len(revenue) > 0

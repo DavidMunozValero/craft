@@ -36,6 +36,7 @@ class TestConflictMatrix:
         class FakeService:
             def __init__(self, sid):
                 self.id = sid
+
         return [FakeService("a"), FakeService("b"), FakeService("c")]
 
     def test_initial_matrix_all_false(self, services):

@@ -10,7 +10,7 @@ CLI scripts in ``scripts/`` only need to parse arguments and call
 :meth:`ExperimentRunner.run`.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
 
@@ -71,6 +71,7 @@ class ExperimentConfig:
 
     def resolved_paths(self, project_root: Path) -> dict:
         """Resolve relative paths against ``project_root``."""
+
         def _resolve(p: Path) -> Path:
             return p if p.is_absolute() else project_root / p
 
@@ -79,7 +80,9 @@ class ExperimentConfig:
             "generator_config": _resolve(self.generator_config_path),
             "results_dir": _resolve(self.results_dir),
             "figures_dir": _resolve(self.figures_dir),
-            "output_supply": _resolve(self.output_supply_path) if self.output_supply_path else None,
+            "output_supply": _resolve(self.output_supply_path)
+            if self.output_supply_path
+            else None,
         }
 
 
@@ -102,7 +105,9 @@ def build_mealpy_algorithm(name: str, epoch: int, pop_size: int):
     algorithms = {
         "ga": lambda: GA.BaseGA(epoch=epoch, pop_size=pop_size, pc=0.9, pm=0.01),
         "de": lambda: DE.OriginalDE(epoch=epoch, pop_size=pop_size, wf=0.5, cr=0.9),
-        "pso": lambda: PSO.OriginalPSO(epoch=epoch, pop_size=pop_size, c1=1.5, c2=1.5, w=0.7),
+        "pso": lambda: PSO.OriginalPSO(
+            epoch=epoch, pop_size=pop_size, c1=1.5, c2=1.5, w=0.7
+        ),
         "sca": lambda: SCA.OriginalSCA(epoch=epoch, pop_size=pop_size),
     }
     key = name.lower()
@@ -120,7 +125,9 @@ class ExperimentRunner:
     saved artifacts.
     """
 
-    def __init__(self, config: ExperimentConfig, project_root: Union[Path, None] = None) -> None:
+    def __init__(
+        self, config: ExperimentConfig, project_root: Union[Path, None] = None
+    ) -> None:
         self.config = config
         self.project_root = project_root or Path.cwd()
         self.paths = config.resolved_paths(self.project_root)
@@ -134,7 +141,10 @@ class ExperimentRunner:
         """Generate a supply YAML and return its path."""
         paths = self.paths
         if paths["output_supply"] is None:
-            paths["output_supply"] = paths["results_dir"] / f"supply_{self.config.algorithm}_seed{self.config.seed}.yaml"
+            paths["output_supply"] = (
+                paths["results_dir"]
+                / f"supply_{self.config.algorithm}_seed{self.config.seed}.yaml"
+            )
 
         paths["results_dir"].mkdir(parents=True, exist_ok=True)
 
@@ -150,14 +160,18 @@ class ExperimentRunner:
             without_conflicts=self.config.without_conflicts,
         )
         if self.config.verbose:
-            print(f"Generated {len(generator.services)} services -> {paths['output_supply']}")
-        return paths["output_supply"]
+            print(
+                f"Generated {len(generator.services)} services -> {paths['output_supply']}"
+            )
+        return Path(paths["output_supply"])
 
     def load_supply(self, supply_path: Union[Path, None] = None) -> Supply:
         """Load a supply YAML file."""
         path = supply_path or self.paths["output_supply"]
         if path is None:
-            raise ValueError("No supply path provided. Either generate one or pass --supply.")
+            raise ValueError(
+                "No supply path provided. Either generate one or pass --supply."
+            )
         path = Path(path)
         self.supply = Supply.from_yaml(path=str(path))
         self.paths["output_supply"] = path
@@ -165,9 +179,12 @@ class ExperimentRunner:
             print(f"Loaded {len(self.supply.services)} services from {path}")
         return self.supply
 
-    def build_timetabling(self, supply: Union[Supply, None] = None) -> MealpyTimetabling:
+    def build_timetabling(
+        self, supply: Union[Supply, None] = None
+    ) -> MealpyTimetabling:
         """Build the timetabling problem from the supply and revenue behavior."""
         supply = supply or self.supply
+        assert supply is not None
         revenue_behavior = RevenueSimulator(supply=supply).simulate_revenue(
             alpha=self.config.revenue_alpha,
         )
@@ -179,7 +196,9 @@ class ExperimentRunner:
         )
         if self.config.verbose:
             n_real = len(self.timetabling.boundaries.real)
-            print(f"Timetabling problem: {self.timetabling.n_services} services, {n_real} real variables")
+            print(
+                f"Timetabling problem: {self.timetabling.n_services} services, {n_real} real variables"
+            )
         return self.timetabling
 
     def optimize(self) -> dict:
@@ -190,6 +209,7 @@ class ExperimentRunner:
         """
         if self.timetabling is None:
             self.build_timetabling()
+        assert self.timetabling is not None
 
         if self.config.algorithm == "gsa":
             return self._optimize_gsa()
@@ -201,6 +221,7 @@ class ExperimentRunner:
     def _optimize_mealpy(self) -> dict:
         from mealpy import FloatVar
 
+        assert self.timetabling is not None
         tt = self.timetabling
         bounds = [FloatVar(lb=lb, ub=ub) for lb, ub in tt.boundaries.real]
         problem = {
@@ -210,14 +231,20 @@ class ExperimentRunner:
             "verbose": False,
         }
 
-        model = build_mealpy_algorithm(self.config.algorithm, self.config.epoch, self.config.pop_size)
+        model = build_mealpy_algorithm(
+            self.config.algorithm, self.config.epoch, self.config.pop_size
+        )
         if self.config.verbose:
-            print(f"Running {self.config.algorithm.upper()} (epoch={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed})...")
+            print(
+                f"Running {self.config.algorithm.upper()} (epoch={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed})..."
+            )
         model.solve(problem, seed=self.config.seed)
 
         best_position = model.g_best.solution
         best_fitness = float(model.g_best.target.fitness)
-        convergence = np.array([d.target.fitness for d in model.history.list_global_best])
+        convergence = np.array(
+            [d.target.fitness for d in model.history.list_global_best]
+        )
 
         schedule = tt.get_heuristic_schedule()
         self.best_solution = Solution(real=best_position, discrete=schedule)
@@ -225,7 +252,9 @@ class ExperimentRunner:
 
         n_scheduled = int(np.sum(schedule))
         if self.config.verbose:
-            print(f"Best fitness: {best_fitness:.2f}, scheduled: {n_scheduled}/{len(schedule)}")
+            print(
+                f"Best fitness: {best_fitness:.2f}, scheduled: {n_scheduled}/{len(schedule)}"
+            )
 
         return {
             "algorithm": self.config.algorithm,
@@ -239,6 +268,7 @@ class ExperimentRunner:
     def _optimize_gsa(self) -> dict:
         from .gsa import GSA
 
+        assert self.timetabling is not None
         tt = self.timetabling
         n_real = len(tt.boundaries.real)
         boundaries = Boundaries(real=tt.boundaries.real, discrete=[])
@@ -246,16 +276,25 @@ class ExperimentRunner:
         def gsa_objective(sol):
             sol_arr = np.array(sol.real, dtype=np.int32)
             tt.schedule_manager.update_from_solution(sol_arr)
-            tt.revenue_calculator.updated_schedule = tt.schedule_manager.updated_schedule
+            tt.revenue_calculator.updated_schedule = (
+                tt.schedule_manager.updated_schedule
+            )
             tt.revenue_calculator.recompute_all_revenues()
             schedule = tt.get_heuristic_schedule()
             revenue = tt.get_revenue(Solution(real=sol.real, discrete=schedule))
             accuracy = float(np.sum(schedule)) / len(schedule)
             return revenue, accuracy
 
-        gsa = GSA(objective_function=gsa_objective, r_dim=n_real, d_dim=0, boundaries=boundaries)
+        gsa = GSA(
+            objective_function=gsa_objective,
+            r_dim=n_real,
+            d_dim=0,
+            boundaries=boundaries,
+        )
         if self.config.verbose:
-            print(f"Running GSA (iters={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed})...")
+            print(
+                f"Running GSA (iters={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed})..."
+            )
         gsa.optimize(
             population_size=self.config.pop_size,
             iters=self.config.epoch,
@@ -264,6 +303,7 @@ class ExperimentRunner:
         )
 
         convergence = gsa.convergence
+        assert gsa.best_solution is not None
         schedule = tt.get_heuristic_schedule()
         self.best_solution = Solution(real=gsa.best_solution.real, discrete=schedule)
         self.convergence = convergence
@@ -271,7 +311,9 @@ class ExperimentRunner:
         n_scheduled = int(np.sum(schedule))
         best_fitness = gsa.best_fitness
         if self.config.verbose:
-            print(f"Best fitness: {best_fitness:.2f}, scheduled: {n_scheduled}/{len(schedule)}")
+            print(
+                f"Best fitness: {best_fitness:.2f}, scheduled: {n_scheduled}/{len(schedule)}"
+            )
 
         return {
             "algorithm": "gsa",
@@ -285,6 +327,7 @@ class ExperimentRunner:
     def _optimize_fairness(self) -> dict:
         from mealpy import FloatVar, GA
 
+        assert self.timetabling is not None
         tt = self.timetabling
         revenue_behavior = tt.revenue
         alpha = self.config.fairness_alpha
@@ -294,7 +337,9 @@ class ExperimentRunner:
             revenue = tt.objective_function(solution)
             schedule = tt.get_heuristic_schedule()
             fair_idx, _ = FairnessMetrics.jains_fairness_index(
-                schedule, tt.capacities, revenue_behavior,
+                schedule,
+                tt.capacities,
+                revenue_behavior,
             )
             return alpha * revenue / 1e3 + beta * fair_idx * 100
 
@@ -306,14 +351,20 @@ class ExperimentRunner:
             "verbose": False,
         }
 
-        model = GA.BaseGA(epoch=self.config.epoch, pop_size=self.config.pop_size, pc=0.9, pm=0.01)
+        model = GA.BaseGA(
+            epoch=self.config.epoch, pop_size=self.config.pop_size, pc=0.9, pm=0.01
+        )
         if self.config.verbose:
-            print(f"Running fairness-aware GA (epoch={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed}, alpha={alpha}, beta={beta})...")
+            print(
+                f"Running fairness-aware GA (epoch={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed}, alpha={alpha}, beta={beta})..."
+            )
         model.solve(problem, seed=self.config.seed)
 
         best_position = model.g_best.solution
         best_fitness = float(model.g_best.target.fitness)
-        convergence = np.array([d.target.fitness for d in model.history.list_global_best])
+        convergence = np.array(
+            [d.target.fitness for d in model.history.list_global_best]
+        )
 
         schedule = tt.get_heuristic_schedule()
         self.best_solution = Solution(real=best_position, discrete=schedule)
@@ -321,7 +372,9 @@ class ExperimentRunner:
 
         n_scheduled = int(np.sum(schedule))
         if self.config.verbose:
-            print(f"Best fitness: {best_fitness:.2f}, scheduled: {n_scheduled}/{len(schedule)}")
+            print(
+                f"Best fitness: {best_fitness:.2f}, scheduled: {n_scheduled}/{len(schedule)}"
+            )
 
         return {
             "algorithm": "fairness",
@@ -338,6 +391,8 @@ class ExperimentRunner:
         Returns a dictionary with the paths to the saved artifacts.
         """
         paths = self.paths
+        assert self.timetabling is not None
+        assert self.best_solution is not None
         paths["results_dir"].mkdir(parents=True, exist_ok=True)
 
         algo = results["algorithm"]
@@ -355,10 +410,12 @@ class ExperimentRunner:
 
         if self.config.save_convergence and self.convergence is not None:
             conv_path = paths["results_dir"] / f"convergence_{suffix}.csv"
-            pd.DataFrame({
-                "iteration": range(len(self.convergence)),
-                "fitness": self.convergence,
-            }).to_csv(conv_path, index=False)
+            pd.DataFrame(
+                {
+                    "iteration": range(len(self.convergence)),
+                    "fitness": self.convergence,
+                }
+            ).to_csv(conv_path, index=False)
             saved["convergence_path"] = conv_path
 
         if self.config.verbose:

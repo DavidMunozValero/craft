@@ -1,9 +1,8 @@
 """Tests for craft.scheduling: ScheduleManager, get_schedule_from_supply."""
 
 import numpy as np
-import pytest
 
-from craft.scheduling import ScheduleManager, get_schedule_from_supply
+from craft.scheduling import get_schedule_from_supply
 
 
 class TestScheduleManager:
@@ -18,7 +17,9 @@ class TestScheduleManager:
 
     def test_update_from_solution_preserves_structure(self, timetabling):
         sm = timetabling.schedule_manager
-        original_keys = {s: list(sm.reference_schedules[s].keys()) for s in sm.reference_schedules}
+        original_keys = {
+            s: list(sm.reference_schedules[s].keys()) for s in sm.reference_schedules
+        }
         solution = np.array(sm._get_real_vars(), dtype=np.int32)
         sm.update_from_solution(solution)
         for sid in sm.updated_schedule:
@@ -30,7 +31,7 @@ class TestScheduleManager:
             assert sm.is_service_feasible(sid) is True
 
     def test_get_departure_time_indexer(self, timetabling):
-        idx = sm_indexer = timetabling.schedule_manager.get_departure_time_indexer()
+        idx = timetabling.schedule_manager.get_departure_time_indexer()
         assert isinstance(idx, dict)
         assert all(isinstance(k, int) for k in idx)
         assert all(isinstance(v, str) for v in idx.values())

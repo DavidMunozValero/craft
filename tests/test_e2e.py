@@ -6,9 +6,8 @@ optimize -> schedule) produces sensible results.
 """
 
 import numpy as np
-import pytest
 
-from craft import RevenueSimulator, Solution
+from craft import Solution
 from craft.gsa import Boundaries, GSA
 from craft.mealpy import MealpyTimetabling
 
@@ -78,7 +77,9 @@ class TestGSAE2E:
         def gsa_obj(sol):
             sol_arr = np.array(sol.real, dtype=np.int32)
             tt.schedule_manager.update_from_solution(sol_arr)
-            tt.revenue_calculator.updated_schedule = tt.schedule_manager.updated_schedule
+            tt.revenue_calculator.updated_schedule = (
+                tt.schedule_manager.updated_schedule
+            )
             tt.revenue_calculator.recompute_all_revenues()
             schedule = tt.get_heuristic_schedule()
             revenue = tt.get_revenue(Solution(real=sol.real, discrete=schedule))

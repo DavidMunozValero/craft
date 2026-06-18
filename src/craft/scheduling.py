@@ -35,10 +35,16 @@ class ScheduleManager:
                     arrival_time = departure_time
                     dt_idx += 1
                 elif j == len(stops) - 1:
-                    arrival_time = departure_times[dt_idx - 1] + self.operational_times[service][ot_idx]
+                    arrival_time = (
+                        departure_times[dt_idx - 1]
+                        + self.operational_times[service][ot_idx]
+                    )
                     departure_time = arrival_time
                 else:
-                    arrival_time = departure_times[dt_idx - 1] + self.operational_times[service][ot_idx]
+                    arrival_time = (
+                        departure_times[dt_idx - 1]
+                        + self.operational_times[service][ot_idx]
+                    )
                     departure_time = departure_times[dt_idx]
                     ot_idx += 2
                     dt_idx += 1
@@ -114,7 +120,7 @@ def get_schedule_from_supply(
     """
     if not supply:
         supply = Supply.from_yaml(path=path)
-    requested_schedule = {}
+    requested_schedule: dict[str, dict[str, list[int]]] = {}
     for service in supply.services:
         requested_schedule[service.id] = {}
         time = service.time_slot.start

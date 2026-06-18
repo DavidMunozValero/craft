@@ -1,7 +1,7 @@
 """Fairness metrics for railway scheduling."""
 
 import numpy as np
-from typing import Mapping, Tuple, Any
+from typing import Mapping, Tuple
 
 
 class FairnessMetrics:
@@ -15,8 +15,8 @@ class FairnessMetrics:
         total = sum(revenue_values)
         if total == 0:
             return 0.0
-        sum_squared = sum(x ** 2 for x in revenue_values)
-        return (total ** 2) / (n * sum_squared) if sum_squared > 0 else 0.0
+        sum_squared = sum(x**2 for x in revenue_values)
+        return (total**2) / (n * sum_squared) if sum_squared > 0 else 0.0
 
     def gini_coefficient(self, revenue_values: list) -> float:
         """Calculate Gini coefficient from revenue values."""
@@ -30,7 +30,7 @@ class FairnessMetrics:
         total = sum(sorted_vals)
         if total == 0:
             return 0.0
-        return (2 * cumsum) / (n * total) - (n + 1) / n
+        return float((2 * cumsum) / (n * total) - (n + 1) / n)
 
     def atkinson_index(self, revenue_values: list, epsilon: float = 1.0) -> float:
         """Calculate Atkinson index from revenue values."""
@@ -51,13 +51,15 @@ class FairnessMetrics:
             return 0.0
 
     @staticmethod
-    def sum_importance(scheduled: np.ndarray, revenue: Mapping[str, dict]) -> Mapping[str, float]:
+    def sum_importance(
+        scheduled: np.ndarray, revenue: Mapping[str, dict]
+    ) -> Mapping[str, float]:
         """Sum importance by RU from scheduled services."""
-        scheduled_by_ru = {}
+        scheduled_by_ru: dict[str, float] = {}
         for idx, (service_id, service_data) in enumerate(revenue.items()):
             if scheduled[idx]:
-                ru = service_data['ru']
-                importance = service_data.get('importance', 1.0)
+                ru = service_data["ru"]
+                importance = service_data.get("importance", 1.0)
                 scheduled_by_ru[ru] = scheduled_by_ru.get(ru, 0) + importance
         return scheduled_by_ru
 
@@ -65,7 +67,7 @@ class FairnessMetrics:
     def jains_fairness_index(
         scheduled: np.ndarray,
         capacities: Mapping[str, float],
-        revenue: Mapping[str, dict]
+        revenue: Mapping[str, dict],
     ) -> Tuple[float, Mapping[str, float]]:
         """
         Calculate Jain's fairness index for scheduled services.
@@ -83,19 +85,21 @@ class FairnessMetrics:
         if not scheduled_sum:
             return 1.0, {}
 
-        ratios = {ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities}
+        ratios = {
+            ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities
+        }
 
         n = len(ratios)
         if n == 0:
             return 1.0, ratios
 
         sum_ratios = sum(ratios.values())
-        sum_squares = sum(x ** 2 for x in ratios.values())
+        sum_squares = sum(x**2 for x in ratios.values())
 
         if sum_squares == 0:
             return 0.0, ratios
 
-        fairness = (sum_ratios ** 2) / (n * sum_squares)
+        fairness = (sum_ratios**2) / (n * sum_squares)
         return fairness, scheduled_sum
 
     @staticmethod
@@ -103,7 +107,7 @@ class FairnessMetrics:
         scheduled: np.ndarray,
         capacities: Mapping[str, float],
         revenue: Mapping[str, dict],
-        alpha: float = 10.0
+        alpha: float = 10.0,
     ) -> Tuple[float, Mapping[str, float]]:
         """
         Calculate Gini-based fairness index for scheduled services.
@@ -119,17 +123,16 @@ class FairnessMetrics:
         """
         scheduled_sum = FairnessMetrics.sum_importance(scheduled, revenue)
 
-        for ru in scheduled_sum:
-            scheduled_sum[ru] *= 1  # Could multiply by services_by_ru if needed
-
         if not scheduled_sum:
             raise ValueError("Scheduled resources cannot be empty.")
 
         if len(scheduled_sum) != len(capacities):
             raise ValueError("Scheduled resources and capacities must match.")
 
-        ratios = {ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities}
-        ratios = {ru: (ratio ** alpha) for ru, ratio in ratios.items()}
+        ratios = {
+            ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities
+        }
+        ratios = {ru: (ratio**alpha) for ru, ratio in ratios.items()}
 
         values = list(ratios.values())
         n = len(values)
@@ -139,7 +142,7 @@ class FairnessMetrics:
             return 1.0, ratios
 
         sorted_values = sorted(values)
-        cumulative = 0
+        cumulative = 0.0
         for i, value in enumerate(sorted_values, start=1):
             cumulative += i * value
 
@@ -153,7 +156,7 @@ class FairnessMetrics:
         capacities: Mapping[str, float],
         revenue: Mapping[str, dict],
         alpha: float = 10.0,
-        epsilon: float = 2
+        epsilon: float = 2,
     ) -> Tuple[float, Mapping[str, float]]:
         """
         Calculate Atkinson-based fairness index for scheduled services.
@@ -173,8 +176,10 @@ class FairnessMetrics:
         if not scheduled_sum:
             return 1.0, {}
 
-        ratios = {ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities}
-        ratios = {ru: (ratio ** alpha) for ru, ratio in ratios.items()}
+        ratios = {
+            ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities
+        }
+        ratios = {ru: (ratio**alpha) for ru, ratio in ratios.items()}
 
         values = list(ratios.values())
         n = len(values)

@@ -6,8 +6,6 @@ constant, each split into real and discrete parts to match the hybrid
 solution representation.
 """
 
-from typing import Any, List, Tuple, Union
-
 
 class Velocity:
     """Velocity of an agent, split into real and discrete parts."""

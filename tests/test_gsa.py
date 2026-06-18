@@ -64,9 +64,16 @@ class TestSinChaoticTerm:
 class TestGField:
     def test_empty_dim(self):
         acc = g_field(
-            population_size=5, dim=0, pos=np.array([]), mass=np.ones(5),
-            current_iter=0, max_iters=10, gravity_constant=1.0,
-            r_power=1, elitist_check=True, real=True,
+            population_size=5,
+            dim=0,
+            pos=np.array([]),
+            mass=np.ones(5),
+            current_iter=0,
+            max_iters=10,
+            gravity_constant=1.0,
+            r_power=1,
+            elitist_check=True,
+            real=True,
         )
         assert acc.size == 0
 
@@ -75,9 +82,16 @@ class TestGField:
         pos = np.random.rand(pop, dim) * 100
         mass = np.ones(pop) / pop
         acc = g_field(
-            population_size=pop, dim=dim, pos=pos, mass=mass,
-            current_iter=0, max_iters=10, gravity_constant=100.0,
-            r_power=1, elitist_check=True, real=True,
+            population_size=pop,
+            dim=dim,
+            pos=pos,
+            mass=mass,
+            current_iter=0,
+            max_iters=10,
+            gravity_constant=100.0,
+            r_power=1,
+            elitist_check=True,
+            real=True,
         )
         assert acc.shape == (pop, dim)
 
@@ -86,9 +100,16 @@ class TestGField:
         pos = np.random.randint(0, 2, size=(pop, dim)).astype(float)
         mass = np.ones(pop) / pop
         acc = g_field(
-            population_size=pop, dim=dim, pos=pos, mass=mass,
-            current_iter=0, max_iters=10, gravity_constant=1.0,
-            r_power=1, elitist_check=True, real=False,
+            population_size=pop,
+            dim=dim,
+            pos=pos,
+            mass=mass,
+            current_iter=0,
+            max_iters=10,
+            gravity_constant=1.0,
+            r_power=1,
+            elitist_check=True,
+            real=False,
         )
         assert acc.shape == (pop, dim)
 
@@ -113,6 +134,7 @@ class TestGSA:
     def test_construct(self):
         def obj(sol):
             return (0.0, 0.0)
+
         bounds = Boundaries(real=[(0.0, 1.0)] * 3, discrete=[])
         gsa = GSA(objective_function=obj, r_dim=3, d_dim=0, boundaries=bounds)
         assert gsa.r_dim == 3

@@ -50,6 +50,7 @@ def supply(supply_path) -> Supply:
 def revenue_behavior(supply):
     """Compute revenue behavior for the supply (seeded for reproducibility)."""
     import numpy as np
+
     np.random.seed(42)
     return RevenueSimulator(supply=supply).simulate_revenue(alpha=2 / 3)
 

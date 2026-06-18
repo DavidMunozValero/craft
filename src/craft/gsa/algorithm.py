@@ -10,7 +10,7 @@ containers come from :mod:`craft.common`.
 import os
 import random
 import time
-from typing import List, Union
+from typing import Callable, List, Union
 
 import numpy as np
 import pandas as pd
@@ -29,12 +29,12 @@ from .fields import (
 class GSA:
     def __init__(
         self,
-        objective_function: callable,
+        objective_function: Callable,
         r_dim: int,
         d_dim: int,
         boundaries: Boundaries,
-        is_feasible: Union[callable, None] = None,
-        custom_repair: Union[None, callable] = None
+        is_feasible: Union[Callable, None] = None,
+        custom_repair: Union[None, Callable] = None,
     ) -> None:
         self.objective_function = objective_function
         self.is_feasible = is_feasible if is_feasible is not None else (lambda _: True)
@@ -46,23 +46,29 @@ class GSA:
 
         self.population_history = pd.DataFrame()
         self.objective_function_name = self.objective_function.__name__
-        self.solution_history = None
-        self.accuracy_history = None
-        self.convergence = None
-        self.start_time = None
-        self.end_time = None
-        self.execution_time = None
+        self.solution_history: Union[List[Solution], None] = None
+        self.accuracy_history: Union[list, None] = None
+        self.convergence: Union[np.ndarray, None] = None
+        self.start_time: Union[str, None] = None
+        self.end_time: Union[str, None] = None
+        self.execution_time: Union[float, None] = None
+        self.best_solution: Union[Solution, None] = None
+        self.best_fitness: float = float("-inf")
 
     def _get_initial_positions(self, population_size: int) -> List[Solution]:
-        pos_r = np.array([
-            np.random.uniform(low=rd_lb, high=rd_ub, size=population_size)
-            for rd_lb, rd_ub in self.boundaries.real
-        ]).T
+        pos_r = np.array(
+            [
+                np.random.uniform(low=rd_lb, high=rd_ub, size=population_size)
+                for rd_lb, rd_ub in self.boundaries.real
+            ]
+        ).T
 
-        pos_d = np.array([
-            np.random.choice(a=range(dd_lb, dd_ub + 1), size=population_size)
-            for dd_lb, dd_ub in self.boundaries.discrete
-        ]).T
+        pos_d = np.array(
+            [
+                np.random.choice(a=range(dd_lb, dd_ub + 1), size=population_size)
+                for dd_lb, dd_ub in self.boundaries.discrete
+            ]
+        ).T
 
         population = []
         for sol in range(population_size):
@@ -70,17 +76,24 @@ class GSA:
             discrete_part = pos_d[sol, :] if self.d_dim > 0 else np.array([])
 
             iters = 0
-            while not self.is_feasible(Solution(real=real_part, discrete=discrete_part)) and iters < 100:
+            while (
+                not self.is_feasible(Solution(real=real_part, discrete=discrete_part))
+                and iters < 100
+            ):
                 if self.r_dim > 0:
-                    real_part = np.array([
-                        np.random.uniform(low=rd_lb, high=rd_ub)
-                        for rd_lb, rd_ub in self.boundaries.real
-                    ])
+                    real_part = np.array(
+                        [
+                            np.random.uniform(low=rd_lb, high=rd_ub)
+                            for rd_lb, rd_ub in self.boundaries.real
+                        ]
+                    )
                 if self.d_dim > 0:
-                    discrete_part = np.array([
-                        np.random.choice(a=range(dd_lb, dd_ub + 1))
-                        for dd_lb, dd_ub in self.boundaries.discrete
-                    ])
+                    discrete_part = np.array(
+                        [
+                            np.random.choice(a=range(dd_lb, dd_ub + 1))
+                            for dd_lb, dd_ub in self.boundaries.discrete
+                        ]
+                    )
                 iters += 1
 
             solution = Solution(real=real_part, discrete=discrete_part)
@@ -100,13 +113,16 @@ class GSA:
         w_min: float = 1e-10,
         save_population: bool = False,
         seed: Union[int, None] = None,
-        verbose: bool = True
+        verbose: bool = True,
     ) -> pd.DataFrame:
         if seed is not None:
             self.set_seed(seed)
 
         vel = [
-            Solution(np.zeros(self.r_dim, dtype=np.float64), np.zeros(self.d_dim, dtype=np.float64))
+            Velocity(
+                np.zeros(self.r_dim, dtype=np.float64),
+                np.zeros(self.d_dim, dtype=np.float64),
+            )
             for _ in range(population_size)
         ]
         fit = np.zeros(population_size, dtype=np.float64)
@@ -131,7 +147,14 @@ class GSA:
         timer_start = time.time()
         self.start_time = time.strftime("%Y-%m-%d-%H-%M-%S")
 
-        columns = ['Iteration', 'Fitness', 'Accuracy', 'ExecutionTime', 'Discrete', 'Real']
+        columns = [
+            "Iteration",
+            "Fitness",
+            "Accuracy",
+            "ExecutionTime",
+            "Discrete",
+            "Real",
+        ]
         history = pd.DataFrame(columns=columns)
 
         if verbose:
@@ -169,7 +192,9 @@ class GSA:
             ]
 
             if verbose:
-                print(f'At iteration {current_iter + 1} the best fitness is {g_best_score}')
+                print(
+                    f"At iteration {current_iter + 1} the best fitness is {g_best_score}"
+                )
 
             mass = mass_calculation(fit=fit)
 
@@ -178,7 +203,7 @@ class GSA:
                 max_iters=iters,
                 chaotic_constant=chaotic_constant,
                 w_max=w_max,
-                w_min=w_min
+                w_min=w_min,
             )
 
             acc = self._calculate_acceleration(
@@ -189,7 +214,7 @@ class GSA:
                 max_iters=iters,
                 gravity_constant=gravity_constant,
                 r_power=r_power,
-                elitist_check=elitist_check
+                elitist_check=elitist_check,
             )
 
             pos, vel = self._move(
@@ -198,7 +223,7 @@ class GSA:
                 acceleration=acc,
                 population=population_size,
                 v_max=6,
-                repair_solution=repair_solution
+                repair_solution=repair_solution,
             )
 
         timer_end = time.time()
@@ -220,7 +245,7 @@ class GSA:
         max_iters: int,
         chaotic_constant: bool,
         w_max: float,
-        w_min: float
+        w_min: float,
     ) -> GConstant:
         g_real = g_real_constant(current_iter, max_iters)
         g_discrete = g_bin_constant(current_iter, max_iters)
@@ -242,7 +267,7 @@ class GSA:
         max_iters: int,
         gravity_constant: GConstant,
         r_power: int,
-        elitist_check: bool = True
+        elitist_check: bool = True,
     ) -> List[Acceleration]:
         real_arr = np.array([p.real for p in pos], dtype=float)
 
@@ -252,6 +277,7 @@ class GSA:
             elif real_arr.shape[0] == self.r_dim:
                 real_arr = real_arr.reshape(1, self.r_dim)
 
+        acc_r: np.ndarray
         if self.r_dim > 0:
             acc_r = g_field(
                 population_size=population_size,
@@ -263,11 +289,12 @@ class GSA:
                 gravity_constant=gravity_constant.real,
                 r_power=r_power,
                 elitist_check=elitist_check,
-                real=True
+                real=True,
             )
         else:
-            acc_r = []
+            acc_r = np.array([])
 
+        acc_d: np.ndarray
         if self.d_dim > 0:
             discrete_arr = np.array([p.discrete for p in pos], dtype=np.bool_)
             if discrete_arr.ndim == 1:
@@ -282,12 +309,12 @@ class GSA:
                 gravity_constant=gravity_constant.discrete,
                 r_power=r_power,
                 elitist_check=elitist_check,
-                real=False
+                real=False,
             )
         else:
-            acc_d = []
+            acc_d = np.array([])
 
-        acceleration = []
+        acceleration: List[Acceleration] = []
         for i in range(population_size):
             r_acc = acc_r[i] if self.r_dim > 0 else None
             d_acc = acc_d[i] if self.d_dim > 0 else None
@@ -296,24 +323,29 @@ class GSA:
         return acceleration
 
     def _clip_positions(self, solution: Solution) -> Solution:
+        l1_r: np.ndarray
         if self.r_dim > 0:
-            l1_r = []
-            for i, val in enumerate(solution.real):
-                l1_r.append(np.clip(val, self.boundaries.real[i][0], self.boundaries.real[i][1]))
+            l1_r = np.array(
+                [
+                    np.clip(val, self.boundaries.real[i][0], self.boundaries.real[i][1])
+                    for i, val in enumerate(solution.real)
+                ]
+            )
         else:
             l1_r = np.array([])
 
+        l1_d: np.ndarray
         if self.d_dim > 0:
             discrete_bounds = np.array(self.boundaries.discrete)
             l1_d = np.clip(
-                solution.discrete,
-                discrete_bounds[:, 0],
-                discrete_bounds[:, 1]
+                solution.discrete, discrete_bounds[:, 0], discrete_bounds[:, 1]
             ).astype(int)
         else:
             l1_d = np.array([])
 
-        return Solution(real=np.array(l1_r, dtype=float), discrete=np.array(l1_d, dtype=int))
+        return Solution(
+            real=np.array(l1_r, dtype=float), discrete=np.array(l1_d, dtype=int)
+        )
 
     def _move(
         self,
@@ -322,7 +354,7 @@ class GSA:
         acceleration: List[Acceleration],
         population: int = 1,
         v_max: int = 6,
-        repair_solution: bool = False
+        repair_solution: bool = False,
     ):
         for i in range(population):
             if self.r_dim > 0:
@@ -339,13 +371,19 @@ class GSA:
 
             if self.d_dim > 0:
                 r2 = np.random.random(position[i].discrete.shape)
-                velocity[i].discrete = velocity[i].discrete * r2 + acceleration[i].discrete
-                velocity[i].discrete = np.clip(velocity[i].discrete, a_min=None, a_max=v_max)
+                velocity[i].discrete = (
+                    velocity[i].discrete * r2 + acceleration[i].discrete
+                )
+                velocity[i].discrete = np.clip(
+                    velocity[i].discrete, a_min=None, a_max=v_max
+                )
 
                 discrete_move_probs = np.abs(np.tanh(velocity[i].discrete))
                 rand = np.random.rand(*discrete_move_probs.shape)
 
-                position[i].discrete[rand < discrete_move_probs] = 1 - position[i].discrete[rand < discrete_move_probs]
+                position[i].discrete[rand < discrete_move_probs] = (
+                    1 - position[i].discrete[rand < discrete_move_probs]
+                )
                 position[i].discrete = position[i].discrete.astype(int)
 
                 if not np.any(position[i].discrete):
@@ -355,7 +393,7 @@ class GSA:
             new_solution = Solution(position[i].real, discrete=position[i].discrete)
 
             if not self.is_feasible(new_solution):
-                if repair_solution:
+                if repair_solution and self.custom_repair is not None:
                     new_solution = self.custom_repair(new_solution)
                 else:
                     new_solution = self._clip_positions(solution=new_solution)
@@ -368,4 +406,4 @@ class GSA:
     def set_seed(seed: int) -> None:
         random.seed(seed)
         np.random.seed(seed)
-        os.environ['PYTHONHASHSEED'] = str(seed)
+        os.environ["PYTHONHASHSEED"] = str(seed)

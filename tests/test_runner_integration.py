@@ -25,7 +25,6 @@ class TestExperimentRunnerIntegration:
             epoch=3,
             verbose=False,
             results_dir=tmp_path / "results",
-            figures_dir=tmp_path / "figures",
         )
         runner = ExperimentRunner(cfg, project_root=PROJECT_ROOT)
         results = runner.run()

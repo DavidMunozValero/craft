@@ -1,12 +1,15 @@
 """Plotting helpers for CRAFT experiments.
 
-Visualization utilities used by the analysis notebooks: box/line plots for
-comparing optimization runs and a scheduled-services chart that summarizes
-which services of each RU are scheduled weighted by their importance.
+Visualization utilities for the analysis notebooks and the web interface.
+All functions return a :class:`matplotlib.figure.Figure` so the caller
+controls whether to display (``plt.show()``), save, or embed the figure
+in a web page. The ``save_path`` parameter, when provided, saves the figure
+to disk before returning it.
 """
 
 from typing import Mapping, Union
 
+import matplotlib.figure
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -25,7 +28,12 @@ def sns_box_plot(
     hue: Union[str, None] = None,
     save_path: Union[str, None] = None,
     fig_size: tuple = (10, 6),
-) -> None:
+) -> matplotlib.figure.Figure:
+    """Box plot with strip overlay for comparing distributions across groups.
+
+    Returns the :class:`~matplotlib.figure.Figure` so the caller can display
+    or save it. When ``save_path`` is given, the figure is also saved as PDF.
+    """
     fig, ax = plt.subplots(figsize=fig_size)
 
     ax.set_title(title, fontweight="bold", fontsize=18)
@@ -64,11 +72,11 @@ def sns_box_plot(
         ax.spines[spn].set_linewidth(1.0)
         ax.spines[spn].set_color("#A9A9A9")
 
-    plt.show()
     if save_path:
         fig.savefig(
             save_path, format="pdf", dpi=300, bbox_inches="tight", transparent=True
         )
+    return fig
 
 
 def sns_line_plot(
@@ -84,7 +92,12 @@ def sns_line_plot(
     x_limit: tuple = (-1, 100),
     y_limit: tuple = (-1, 4000),
     fig_size: tuple = (10, 6),
-) -> None:
+) -> matplotlib.figure.Figure:
+    """Line plot for convergence curves.
+
+    Returns the :class:`~matplotlib.figure.Figure`. When ``save_path`` is
+    given, the figure is also saved as PDF.
+    """
     fig, ax = plt.subplots(figsize=fig_size)
 
     ax.set_title(title, fontweight="bold", fontsize=18)
@@ -105,63 +118,54 @@ def sns_line_plot(
         ax.spines[spn].set_color("#A9A9A9")
 
     if legend_type == "outside":
-        plt.legend(
+        ax.legend(
             loc="upper center",
             bbox_to_anchor=(0.5, -0.2),
             ncol=2,
             frameon=True,
         )
     else:
-        plt.legend(loc="lower right")
+        ax.legend(loc="lower right")
 
-    plt.tight_layout(rect=(0, 0.15, 1, 1))
+    fig.tight_layout(rect=(0, 0.15, 1, 1))
 
-    plt.show()
     if save_path:
         fig.savefig(
             save_path, format="pdf", dpi=300, bbox_inches="tight", transparent=True
         )
+    return fig
 
 
 def plot_scheduled_services(
-    fair_index: str,
-    summary_df: pd.DataFrame,
-    df_history: pd.DataFrame,
+    scheduled: np.ndarray,
     revenue_behavior: Mapping[str, Mapping[str, Union[str, float]]],
-    save_path: str,
-) -> None:
-    """Plot scheduled services per RU, weighted by importance.
+    save_path: Union[str, None] = None,
+) -> matplotlib.figure.Figure:
+    """Bar chart of scheduled services per RU, weighted by importance.
 
-    For the run with minimum inequity under the requested ``fair_index``,
-    show a bar chart per RU where each service is a bar sized by its
-    importance and hatched/colored depending on whether it is scheduled.
+    Each service is a bar sized by its importance. Scheduled services use
+    dark gray (``"0.3"``) with a ``"///"`` hatch; non-scheduled services use
+    light gray (``"0.7"``) with a ``"/\\\\/\\\\"`` hatch. Up to 5 RU
+    subplots are laid out in a 2×6 grid.
+
+    Args:
+        scheduled: Boolean array indicating which services are scheduled.
+        revenue_behavior: Mapping ``service_id -> {"ru": str, "importance":
+            float, ...}`` as produced by :class:`~craft.revenue.RevenueSimulator`.
+        save_path: If given, save the figure as PDF before returning it.
+
+    Returns:
+        The :class:`~matplotlib.figure.Figure`.
     """
-    idx_min = summary_df.groupby("FairIndex")["Inequity"].idxmin()
-    resultado = summary_df.loc[idx_min, ["FairIndex", "Run"]]
-
-    df_history_unique = df_history.groupby(["FairIndex", "Run"], as_index=False)[
-        "Discrete"
-    ].first()
-    resultado_final = resultado.merge(
-        df_history_unique[["FairIndex", "Run", "Discrete"]],
-        on=["FairIndex", "Run"],
-        how="left",
-    )
-
-    scheduled_services = None
-    for row in resultado_final.iterrows():
-        if row[1]["FairIndex"] == fair_index:
-            scheduled_services = row[1]["Discrete"]
-
     scheduled_by_importance: dict[str, list[tuple[int, float]]] = {}
-    for i, t in zip(scheduled_services or [], revenue_behavior.items()):
-        service_id, service = t
+    for i, (service_id, service) in enumerate(revenue_behavior.items()):
+        is_scheduled = bool(scheduled[i]) if i < len(scheduled) else False
         ru = str(service["ru"])
         importance = float(service["importance"])
         if ru not in scheduled_by_importance:
-            scheduled_by_importance[ru] = [(i, importance)]
+            scheduled_by_importance[ru] = [(int(is_scheduled), importance)]
         else:
-            scheduled_by_importance[ru].append((i, importance))
+            scheduled_by_importance[ru].append((int(is_scheduled), importance))
 
     sorted_dict = {
         clave: sorted(valores, key=lambda x: x[1], reverse=True)
@@ -171,7 +175,7 @@ def plot_scheduled_services(
     keys = list(sorted_dict.keys())
     n_keys = len(keys)
 
-    plt.figure(figsize=(17, 7))
+    fig = plt.figure(figsize=(17, 7))
     gs = gridspec.GridSpec(2, 6)
     gs.update(wspace=0.5)
     ax1 = plt.subplot(gs[0, :2])
@@ -206,10 +210,50 @@ def plot_scheduled_services(
         )
         ax.legend(handles=[parche_true, parche_false], fontsize=9)
 
-    plt.subplots_adjust(hspace=0.6, wspace=0.3, top=0.85)
+    fig.subplots_adjust(hspace=0.6, wspace=0.3, top=0.85)
 
     for i in range(n_keys, len(axes)):
         axes[i].set_visible(False)
 
-    plt.savefig(save_path, format="pdf", bbox_inches="tight")
-    plt.show()
+    if save_path:
+        fig.savefig(save_path, format="pdf", bbox_inches="tight")
+    return fig
+
+
+def plot_convergence(
+    convergence: np.ndarray,
+    title: str = "Convergence",
+    x_label: str = "Iteration",
+    y_label: str = "Best Fitness",
+    save_path: Union[str, None] = None,
+    fig_size: tuple = (10, 6),
+) -> matplotlib.figure.Figure:
+    """Plot a single convergence curve.
+
+    Args:
+        convergence: 1-D array of per-iteration best fitness values.
+        title: Plot title.
+        x_label: X-axis label.
+        y_label: Y-axis label.
+        save_path: If given, save as PDF before returning.
+        fig_size: Figure size.
+
+    Returns:
+        The :class:`~matplotlib.figure.Figure`.
+    """
+    fig, ax = plt.subplots(figsize=fig_size)
+    ax.plot(convergence, linewidth=2.0)
+    ax.set_title(title, fontweight="bold", fontsize=18)
+    ax.set_xlabel(x_label, fontsize=16)
+    ax.set_ylabel(y_label, fontsize=16)
+    ax.grid(True, color="#A9A9A9", alpha=0.3)
+    ax.tick_params(axis="both", which="major", labelsize=14)
+
+    for spn in ("top", "right"):
+        ax.spines[spn].set_visible(False)
+
+    if save_path:
+        fig.savefig(
+            save_path, format="pdf", dpi=300, bbox_inches="tight", transparent=True
+        )
+    return fig

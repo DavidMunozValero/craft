@@ -114,6 +114,7 @@ class GSA:
         save_population: bool = False,
         seed: Union[int, None] = None,
         verbose: bool = True,
+        callback: Union[Callable, None] = None,
     ) -> pd.DataFrame:
         if seed is not None:
             self.set_seed(seed)

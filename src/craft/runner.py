@@ -65,7 +65,6 @@ class ExperimentConfig:
 
     # Output
     results_dir: Path = Path("data/results")
-    figures_dir: Path = Path("reports/figures")
     save_convergence: bool = True
     verbose: bool = True
 
@@ -79,7 +78,6 @@ class ExperimentConfig:
             "supply_config": _resolve(self.supply_config_path),
             "generator_config": _resolve(self.generator_config_path),
             "results_dir": _resolve(self.results_dir),
-            "figures_dir": _resolve(self.figures_dir),
             "output_supply": _resolve(self.output_supply_path)
             if self.output_supply_path
             else None,

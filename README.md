@@ -87,6 +87,7 @@ poetry run jupyter notebook notebooks/
 
 | Notebook | Description |
 |---|---|
+| `0.0-Synthetic_Data_Generator` | Synthetic timetable + canon/penalties for the Madrid–Barcelona line (two standalone YAMLs in `data/synthetic/`) |
 | `1.0-Supply_Generator` | Generate a supply and visualize it with a Marey chart |
 | `2.0-Capacity_Allocation` | Compare GA/DE/PSO/SCA across seeds; boxplots, convergence, Wilcoxon test |
 | `3.0-Fairness_Timetabling` | Fairness-aware optimization (revenue + Jain/Gini/Atkinson) |
@@ -141,6 +142,7 @@ fields/optimizer, runner config, and end-to-end smoke tests). Coverage: 70%.
 craft/
   configs/            Supply and generator configuration YAMLs
   data/results/       Generated supply YAMLs and convergence CSVs (gitignored)
+  data/synthetic/     Synthetic timetable/revenue YAMLs for the Madrid–Barcelona line (gitignored)
   docs/               Project documentation
   notebooks/          Jupyter notebooks (1.0 → 5.0)
   reports/figures/    Generated plots (gitignored)
@@ -154,6 +156,19 @@ craft/
 ---
 
 ## Documentation
+
+### Empezando desde cero (papers ↔ código)
+
+1. [docs/research_context.md](docs/research_context.md) — contexto de
+   investigación: problema, los dos papers del proyecto y sus formulaciones.
+2. [docs/papers/README.md](docs/papers/README.md) — guía de las fuentes
+   LaTeX de los papers (versiones y cuál leer).
+3. [docs/paper_code_mapping.md](docs/paper_code_mapping.md) — mapeo
+   ecuación a ecuación entre papers y módulos, con discrepancias.
+4. [docs/audit_2026-11.md](docs/audit_2026-11.md) — auditoría del
+   repositorio y backlog priorizado.
+
+### Referencia técnica
 
 - [docs/architecture.md](docs/architecture.md) — architecture and data flow
 - [docs/problem_formulation.md](docs/problem_formulation.md) — revenue and

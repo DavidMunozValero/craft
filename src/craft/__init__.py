@@ -10,6 +10,8 @@ Optimization backends are provided:
   * :class:`craft.ga.GA` — a genetic algorithm over a direct genome
     (planning bits + minute deltas), formulated by
     :class:`craft.ga.GATimetabling`.
+  * :class:`craft.ga.NSGA2` — a self-contained NSGA-II over the same direct
+    genome and operators as the GA.
 
 All build on the shared layer (entities, revenue, scheduling and fairness).
 """
@@ -36,16 +38,17 @@ __all__ = [
     "MealpyTimetabling",
     "GA",
     "GATimetabling",
+    "NSGA2",
 ]
 
 
 def __getattr__(name: str):
     """Lazily import the optimization backends (heavy optional deps).
 
-    ``GSA``, ``MealpyTimetabling``, ``GA`` and ``GATimetabling`` are resolved
-    on first access so that ``import craft`` stays light and does not force
-    importing scipy.spatial, the mealpy library or the GA backend unless a
-    backend is actually used.
+    ``GSA``, ``MealpyTimetabling``, ``GA``, ``GATimetabling`` and ``NSGA2``
+    are resolved on first access so that ``import craft`` stays light and
+    does not force importing scipy.spatial, the mealpy library or the GA
+    backend unless a backend is actually used.
     """
     if name == "GSA":
         from .gsa import GSA
@@ -55,7 +58,7 @@ def __getattr__(name: str):
         from .mealpy import MealpyTimetabling
 
         return MealpyTimetabling
-    if name in {"GA", "GATimetabling"}:
+    if name in {"GA", "GATimetabling", "NSGA2"}:
         from . import ga
 
         return getattr(ga, name)
@@ -64,5 +67,6 @@ def __getattr__(name: str):
 
 def __dir__() -> list:
     return sorted(
-        list(globals().keys()) + ["GSA", "MealpyTimetabling", "GA", "GATimetabling"]
+        list(globals().keys())
+        + ["GSA", "MealpyTimetabling", "GA", "GATimetabling", "NSGA2"]
     )

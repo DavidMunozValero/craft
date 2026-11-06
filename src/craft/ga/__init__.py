@@ -6,6 +6,7 @@ deltas with respect to the requested timetables.
 """
 
 from .algorithm import GA
+from .nsga2 import NSGA2
 from .timetabling import GATimetabling, load_problem
 
-__all__ = ["GA", "GATimetabling", "load_problem"]
+__all__ = ["GA", "GATimetabling", "NSGA2", "load_problem"]

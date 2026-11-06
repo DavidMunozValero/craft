@@ -3,9 +3,10 @@
 Block-structured GA over the genome layout of
 :class:`craft.ga.timetabling.GATimetabling`: k-tournament selection, uniform
 crossover at service-block granularity, integer gaussian mutation with
-reset-to-requested-time events, and elitism. Every decoded genome is feasible
-by construction, so the search only trades off revenue against the conflict
-penalty.
+reset-to-requested-time events, and elitism. Variation operators live in
+:mod:`craft.ga.operators` and are shared with the other genetic backends.
+Every decoded genome is feasible by construction, so the search only trades
+off revenue against the conflict penalty.
 """
 
 import time
@@ -16,6 +17,7 @@ import pandas as pd
 
 from ..common import Solution
 from .base import DiagnosableProblem
+from .operators import BlockOperators
 
 
 class GA:
@@ -77,10 +79,7 @@ class GA:
         self.elite = elite
         self.tournament_size = tournament_size
 
-        self._starts = np.array([block.start for block in problem.slices])
-        self._widths = np.array([block.stop - block.start for block in problem.slices])
-        self._is_bit = np.zeros(problem.genome_size, dtype=bool)
-        self._is_bit[self._starts] = True
+        self._ops = BlockOperators(problem, pc=pc, pm=pm, sigma=sigma, pr=pr)
 
         self.best_genome: np.ndarray = np.empty(0, dtype=np.int64)
         self.best_fitness: float = float("-inf")
@@ -141,24 +140,18 @@ class GA:
             columns=["Iteration", "Fitness", "Planned", "Conflicts", "ExecutionTime"],
         )
 
+    @property
+    def _starts(self) -> np.ndarray:
+        """First gene index of every service block."""
+        return self._ops.starts
+
     def _initial_population(self, rng: np.random.Generator) -> np.ndarray:
         """Sample the initial population around the requested timetables.
 
         Every service starts planned (``b = 1``) and the deltas carry a small
         gaussian noise around 0, clipped to the genome bounds.
         """
-        population = np.zeros((self.pop_size, self.problem.genome_size), dtype=np.int64)
-        population += np.round(rng.normal(0.0, self.sigma, population.shape)).astype(
-            np.int64
-        )
-        population[:, self._starts] = 1
-        np.clip(
-            population,
-            self.problem.lower_bounds,
-            self.problem.upper_bounds,
-            out=population,
-        )
-        return population
+        return self._ops.initial_population(self.pop_size, rng)
 
     def _evaluate(self, population: np.ndarray) -> np.ndarray:
         """Fitness of every individual in the population."""
@@ -203,10 +196,7 @@ class GA:
         Each child takes every service block from one of the parents, so the
         planning bit of a service always travels together with its deltas.
         """
-        if rng.random() >= self.pc:
-            return p1.copy(), p2.copy()
-        take = np.repeat(rng.random(self.problem.n_services) < 0.5, self._widths)
-        return np.where(take, p2, p1), np.where(take, p1, p2)
+        return self._ops.crossover(p1, p2, rng)
 
     def _mutate(self, genome: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         """Mutate a genome in place semantics: planning bits flip, deltas are
@@ -215,15 +205,7 @@ class GA:
         The result is clipped to the genome bounds, so every child remains a
         valid individual.
         """
-        child = genome.copy()
-        rand = rng.random(child.shape)
-        child[(rand < self.pm) & self._is_bit] ^= 1
-        noise = np.round(rng.normal(0.0, self.sigma, child.shape)).astype(np.int64)
-        reset = (rand < self.pr) & ~self._is_bit
-        perturb = (rand >= self.pr) & (rand < self.pr + self.pm) & ~self._is_bit
-        child = np.where(reset, 0, child + np.where(perturb, noise, 0))
-        np.clip(child, self.problem.lower_bounds, self.problem.upper_bounds, out=child)
-        return child
+        return self._ops.mutate(genome, rng)
 
     def _track(self, population: np.ndarray, fitness: np.ndarray) -> None:
         """Update the best genome found so far."""

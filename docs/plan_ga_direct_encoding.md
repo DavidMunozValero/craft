@@ -1,9 +1,11 @@
 # Plan: GA con codificación directa (máscara + deltas) para maximización de revenue
 
-Estado: viable y validado. Datos de entrada: los generados por el cuaderno
-`0.0-Synthetic_Data_Generator.ipynb`. Alcance: objetivo único (revenue del IM),
-algoritmo único (GA). Filosofía: simple y elegante — reutilizar al máximo la
-capa compartida existente, sin tocar los backends actuales (gsa/mealpy).
+Estado: viable y validado, ampliado a bi-objetivo. Datos de entrada: los
+generados por el cuaderno `0.0-Synthetic_Data_Generator.ipynb`. Alcance
+original: objetivo único (revenue del IM), algoritmo único (GA). Ampliado con
+NSGA-II bi-objetivo (revenue/equidad) y experimento comparativo (fases 4–5).
+Filosofía: simple y elegante — reutilizar al máximo la capa compartida
+existente, sin tocar los backends actuales (gsa/mealpy).
 
 > **Formulación formal** (función objetivo, restricciones, notación del paper
 > y conexión ecuación ↔ código, con diagramas): ver
@@ -141,7 +143,9 @@ regenera con el cuaderno.
 | 2 | `algorithm.py`: GA completo | ✅ Determinista con seed; convergencia monótona (elitismo); history DataFrame; cuaderno `6.0-GA_Direct_Encoding.ipynb` para revisión visual |
 | 3 | `scripts/run_ga.py` + export/docs | ✅ CLI e2e (convergencia, mejor horario y filmstrips en `data/results/`); exports perezosos `craft.GA`/`craft.GATimetabling`; docs (`optimizers.md`, `architecture.md`, `AGENTS.md`); visualización de individuos en `craft/ga/plotting.py` |
 | 3b | Revisión y refactor: contrato `Problem`/`DiagnosableProblem` (`craft/ga/base.py`) para solvers intercambiables; `load_problem` + reporting (`describe_genome`, `schedule_frame`, `greedy_baseline`, `decoded_schedule`, horarios solicitados congelados) en el problema; rediseño de plotting (color por servicio, desvíos resaltados, `plot_timetable`/`plot_evolution`); cuaderno esbelto sobre helpers de `src` | ✅ cuaderno re-ejecutado y verificado visualmente |
-| 4 | Experimento y comparación | GA vs mealpy GA/GSA en la misma instancia: revenue, n_scheduled, convergencia, tiempo |
+| 4 | Experimento y comparación | ✅ Cuaderno `8.0-Comparative_Experiments.ipynb`: greedy, GA-mealpy (paper 1), GA-mealpy rev×fair (paper 2), GSA, GA directo y NSGA-II bi-objetivo sobre la misma instancia y presupuesto (5 semillas, evaluador común con verificador dinámico + filtro de operatividad). Los scripts antiguos (`run_mealpy.py`, `run_gsa.py`) aceptan `--timetable/--revenue` (modo instancia del runner) |
+| 5 | NSGA-II bi-objetivo (revenue + equidad) | ✅ `craft/ga/objectives.py` (`revenue_fairness_objectives`, calibración del paper fair-oriented), `hypervolume` y `pareto_history` en `craft/ga/nsga2.py`, CLI `scripts/run_nsga2.py` (frente, knee, hipervolumen y figuras), Jain con exponente `alpha` en `craft/fairness.py`, objetivo multiplicativo `revenue × fairness` en `MealpyTimetabling(fair_index=..., alpha=...)`; cuaderno 7.0 con comparativa monobjetivo GA vs NSGA-II |
+| 6 | Roadmap de publicación (tercer paper) | Plan de brechas y batería experimental: `docs/plan_paper3_publication.md` |
 
 Resultado destacado (fase 2): en la instancia sintética, el GA (pop 40,
 100 generaciones, seed 42) alcanza un horario **sin conflictos** con revenue
@@ -149,6 +153,13 @@ Resultado destacado (fase 2): en la instancia sintética, el GA (pop 40,
 (17 servicios, **729.53**). El cuaderno 6.0 lo reproduce con pop 50 × 150
 generaciones (**745.29**) y permite inspeccionar individuos, decodificación,
 convergencia y el diagrama espacio-tiempo final.
+
+Resultado destacado (fase 4): con el evaluador común del cuaderno 8.0, el GA
+directo cierra **sin conflictos y con 724.68 ± 27.30** de revenue penalizado
+(λ = 2) frente a **395.44 ± 117.79** del método del paper 1 y **339.61 ±
+24.95** del método del paper 2 (5 semillas, mismo presupuesto); NSGA-II
+bi-objetivo traza el frente revenue–equidad (equidad extrema Jain ≈ 0.99) con
+un coste estricto no significativamente inferior al GA directo (p = 0.4375).
 
 Criterio de éxito: revenue ≥ baselines en instancias con conflictos, con
 menos o iguales servicios descartados, y desplazamientos que demuestren
@@ -162,5 +173,11 @@ resolución dinámica de conflictos (servicios salvados por el arrastre).
 - **Penalización pura**: el GA debe aprender a evitar conflictos; si convergiera
   lento, el primer ajuste es subir λ (parámetro ya expuesto). No se añade
   reparación.
+- **El backend GSA se ejecuta ahora reparado (P0)**: `repair_departures`
+  (deltas → `cumulative_shifts`, factibilidad por construcción) tras cada
+  movimiento y población sembrada con el horario solicitado. Sin reparación
+  colapsaba (2,0 ± 0,7 trenes operativos en la instancia de 50); reparado
+  alcanza el techo del esquema de dos etapas (729,53 ≈ greedy) — ver
+  `docs/plan_paper3_publication.md`.
 - El cuaderno 0.0 es hoy la única fuente de datos: cualquier cambio de CONFIG
   (n_services, seed, direcciones) regenera la instancia de forma reproducible.

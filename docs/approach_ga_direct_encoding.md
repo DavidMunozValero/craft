@@ -50,7 +50,7 @@ código; los tres cambios de fondo se comentan justo debajo.
 | $\delta$ | margen de modificación del IM (60 min) | cota del delta de origen y normalizador de penalización | `im_mod_margin` |
 | $\Delta_{\max}$ | extensión máxima de parada (10 min) | tope superior de los acumulados | `max_stop_time` |
 | $\tau_i^{j}$, $\sigma_i^j$ | tiempos de marcha y parada | invariantes garantizados por el arrastre | `operational_times`, `dwells` |
-| $\omega$ | headway de seguridad (10 min) | umbral $2\omega$ de la condición de conflicto | `safe_headway` |
+| $\omega$ | headway de seguridad (10 min; proxy del régimen de señalización/protección, §9) | umbral $2\omega$ de la condición de conflicto | `safe_headway` |
 | $ca_i$, $k_i$, $P_{DT_i}$, $P_{TT_i}$ | canon y penalizaciones máximas | idénticos (fichero `revenue.yaml`) | `revenue_behavior`, `RevenueCalculator`, `penalty_function()` |
 | $\alpha_i$, $\beta_{ijk}$, $x_{DT}$, $x_{TT}$ | pesos de desvío (Ecs. 8–11) | idénticos | `RevenueCalculator.get_service_revenue()` |
 | $C_{i,i'}$ | indicador de conflicto (Ec. 7) | **dinámico** sobre el horario decodificado | `CorridorConflicts.pairs()` → `conflict_matrix()` |
@@ -751,6 +751,24 @@ de referencia tiene 103 pares en conflicto y no los 20 que se cuentan mirando
 solo la estación origen: cada arista compartida y cada estación de paso
 añaden oportunidades de conflicto.
 
+> **Lectura señalización/protección.** La condición $2\omega$ no es una
+> restricción matemática arbitraria: es un *surrogate* macroscópico de la
+> separación que impone la capa de protección ferroviaria. En bloque fijo
+> convencional la separación deriva de la escalera de *blocking times*; en
+> ETCS L2, de las curvas de frenado; en ETCS L3 (*moving block*) el cantón se
+> mueve con el tren y el headway efectivo se reduce — el factsheet de ERTMS/
+> ERA cifra hasta ~40% de ganancia de capacidad al sustituir bloque fijo. El
+> headway $\omega$ parametriza, por tanto, el **régimen de protección** de la
+> infraestructura, y el checker dinámico — que recomputa $C(g)$ sobre el
+> horario decodificado — verifica la factibilidad del horario *contra esa
+> capa*: propone paths que un sistema de protección podría conceder, frente
+> al horario "de papel" que resultaría de fijar la matriz de conflictos solo
+> con los horarios solicitados. Esta lectura, con su encuadre regulatorio
+> (Directiva 2012/34/UE y reglamento de capacidad TTR) y su colocación en el
+> manuscrito, se registra en `docs/plan_paper3_publication.md` (sección 3b y
+> riesgos). El modelo sigue siendo macroscópico a nivel corredor: la condición
+> es un surrogate de la separación, no un modelo de ETCS.
+
 ---
 
 ## 10. Instancia y resultados de referencia
@@ -790,7 +808,7 @@ en uno de estos ficheros, con tests que la fijan.
 | Ruta | Contenido |
 |---|---|
 | `src/craft/ga/base.py` | Protocolos `Problem` / `DiagnosableProblem` (contrato de integración problema ↔ solver) |
-| `src/craft/ga/timetabling.py` | `load_problem()`, `cumulative_shifts()`, `CorridorConflicts`, `GATimetabling` (layout, decode, fitness, reporting) |
+| `src/craft/ga/timetabling.py` | `load_problem()`, `CorridorConflicts`, `GATimetabling` (layout, decode, fitness, reporting). `cumulative_shifts()` vive ahora en la capa compartida `src/craft/scheduling.py` (reutilizada por el reparador del GSA) y se re-exporta desde aquí |
 | `src/craft/ga/algorithm.py` | `GA` y sus operadores |
 | `src/craft/ga/plotting.py` | `plot_genome`, `plot_genome_filmstrip`, `plot_timetable`, `plot_timetable_filmstrip`, `plot_evolution`, `subset_evenly_by_departure` |
 | `scripts/run_ga.py` | CLI: instancia → GA → CSVs + filmstrips en `data/results/` |

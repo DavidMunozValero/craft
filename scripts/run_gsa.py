@@ -40,6 +40,21 @@ def main() -> None:
         help="Load an existing supply YAML instead of generating one",
     )
     parser.add_argument(
+        "--timetable",
+        type=Path,
+        default=None,
+        help=(
+            "Notebook-0.0 timetable YAML (instance mode, requires --revenue; "
+            "skips generation and revenue simulation)"
+        ),
+    )
+    parser.add_argument(
+        "--revenue",
+        type=Path,
+        default=None,
+        help="Notebook-0.0 revenue behavior YAML (instance mode)",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         type=Path,
@@ -79,7 +94,11 @@ def main() -> None:
 
     runner = ExperimentRunner(config, project_root=Path.cwd())
 
-    if args.supply:
+    if args.timetable and args.revenue:
+        runner.load_instance(args.timetable, args.revenue)
+        results = runner.optimize()
+        results["saved"] = runner.save_results(results)
+    elif args.supply:
         runner.load_supply(args.supply)
         runner.build_timetabling()
         results = runner.optimize()

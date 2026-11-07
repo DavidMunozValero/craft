@@ -7,8 +7,13 @@ import pytest
 from robin.supply.entities import Supply
 
 from craft.common import Solution
-from craft.ga import GATimetabling, NSGA2
-from craft.ga.nsga2 import crowding_distance, dominates, fast_non_dominated_sort
+from craft.ga import GATimetabling, NSGA2, revenue_fairness_objectives
+from craft.ga.nsga2 import (
+    crowding_distance,
+    dominates,
+    fast_non_dominated_sort,
+    hypervolume,
+)
 from craft.scheduling import get_schedule_from_supply
 
 SYNTHETIC_DIR = Path(__file__).resolve().parent.parent / "data" / "synthetic"
@@ -58,6 +63,48 @@ def test_crowding_distance_skips_degenerate_objectives():
     distance = crowding_distance(values)
     assert np.isinf(distance[[0, -1]]).all()
     assert distance[1] == pytest.approx(1.0)
+
+
+def test_knee_index_picks_the_balanced_point():
+    """The knee is the front point closest to the ideal corner."""
+    from craft.ga.nsga2 import knee_index
+
+    front = np.array([[10.0, 0.0], [9.0, 0.1], [5.0, 0.9], [0.0, 1.0]])
+    assert knee_index(front) == 2
+
+
+class TestHypervolume:
+    def test_single_point(self):
+        values = np.array([[3.0, 2.0]])
+        assert hypervolume(values, (0.0, 0.0)) == pytest.approx(6.0)
+
+    def test_staircase_known_area(self):
+        values = np.array([[2.0, 1.0], [1.0, 2.0]])
+        assert hypervolume(values, (0.0, 0.0)) == pytest.approx(3.0)
+
+    def test_dominated_point_adds_nothing(self):
+        front = np.array([[3.0, 2.0]])
+        with_extra = np.array([[3.0, 2.0], [2.0, 1.5]])
+        assert hypervolume(front, (0.0, 0.0)) == pytest.approx(
+            hypervolume(with_extra, (0.0, 0.0))
+        )
+
+    def test_points_below_reference_are_ignored(self):
+        values = np.array([[3.0, 2.0], [-1.0, 0.5]])
+        assert hypervolume(values, (0.0, 0.0)) == pytest.approx(6.0)
+
+    def test_front_not_dominating_reference_is_zero(self):
+        values = np.array([[-5.0, -1.0]])
+        assert hypervolume(values, (0.0, 0.0)) == 0.0
+
+    def test_shifted_reference_point(self):
+        values = np.array([[3.0, 2.0], [1.0, 3.0]])
+        assert hypervolume(values, (1.0, 1.0)) == pytest.approx(2.0)
+
+    def test_more_than_two_objectives_are_rejected(self):
+        values = np.array([[1.0, 2.0, 3.0]])
+        with pytest.raises(ValueError):
+            hypervolume(values, (0.0, 0.0, 0.0))
 
 
 def test_environmental_selection_keeps_the_best():
@@ -165,3 +212,52 @@ def test_optimize_recovers_revenue_on_synthetic():
     assert history["Conflicts"].iloc[0] > 0
     assert history["Conflicts"].iloc[-1] == 0
     assert solver.best_fitness > greedy_baseline()
+
+
+class TestBiObjective:
+    def make_solver(self, problem: GATimetabling, **kwargs) -> NSGA2:
+        """NSGA-II over the revenue + Jain(25) objectives."""
+        return NSGA2(
+            problem,
+            pop_size=12,
+            objectives=revenue_fairness_objectives(problem, index="jain", alpha=25.0),
+            **kwargs,
+        )
+
+    def test_pareto_front_is_two_dimensional(self, problem):
+        """The run exposes a 2-column front per generation."""
+        solver = self.make_solver(problem)
+        solver.optimize(epoch=8, seed=42, verbose=False)
+
+        assert solver.pareto_values.shape[1] == 2
+        assert len(solver.pareto_history) == 9
+        assert all(front.shape[1] == 2 for front in solver.pareto_history)
+        assert len(solver.pareto_history[-1]) == len(solver.pareto_values)
+        assert solver.pareto_values[:, 0].max() == solver.best_fitness
+
+    def test_pareto_front_is_non_dominated(self, problem):
+        """No front member dominates another one."""
+        solver = self.make_solver(problem)
+        solver.optimize(epoch=8, seed=42, verbose=False)
+        values = solver.pareto_values
+        for a in range(len(values)):
+            for b in range(len(values)):
+                if a != b:
+                    assert not dominates(values[a], values[b])
+
+    def test_biobjective_run_is_deterministic(self, problem):
+        """Same seed, same front (objective values)."""
+        fronts = []
+        for _ in range(2):
+            solver = self.make_solver(problem)
+            solver.optimize(epoch=8, seed=42, verbose=False)
+            fronts.append(solver.pareto_values)
+        assert fronts[0].shape == fronts[1].shape
+        assert np.allclose(fronts[0], fronts[1])
+
+    def test_hypervolume_of_history_is_non_decreasing(self, problem):
+        """The tracked front hypervolume never shrinks across generations."""
+        solver = self.make_solver(problem)
+        solver.optimize(epoch=8, seed=42, verbose=False)
+        volumes = [hypervolume(front, (0.0, 0.0)) for front in solver.pareto_history]
+        assert (np.diff(volumes) >= -1e-9).all()

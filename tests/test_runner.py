@@ -8,8 +8,11 @@ from craft.runner import (
     DEFAULT_GENERATOR_CONFIG,
     DEFAULT_SUPPLY_CONFIG,
     ExperimentConfig,
+    ExperimentRunner,
     build_mealpy_algorithm,
 )
+
+SYNTHETIC_DIR = Path(__file__).resolve().parent.parent / "data" / "synthetic"
 
 
 class TestExperimentConfig:
@@ -58,3 +61,48 @@ class TestBuildMealpyAlgorithm:
     def test_case_insensitive(self):
         model = build_mealpy_algorithm("GA", epoch=10, pop_size=5)
         assert model is not None
+
+
+class TestInstanceMode:
+    def test_resolved_instance_paths(self, tmp_path):
+        timetable = tmp_path / "timetable.yaml"
+        revenue = tmp_path / "revenue.yaml"
+        cfg = ExperimentConfig(timetable_path=timetable, revenue_path=revenue)
+        paths = cfg.resolved_paths(tmp_path)
+        assert paths["timetable"] == timetable
+        assert paths["revenue"] == revenue
+
+    def test_load_instance_requires_both_paths(self, tmp_path):
+        cfg = ExperimentConfig(timetable_path=tmp_path / "timetable.yaml")
+        runner = ExperimentRunner(cfg, project_root=tmp_path)
+        with pytest.raises(ValueError):
+            runner.load_instance()
+
+    @pytest.mark.skipif(
+        not (SYNTHETIC_DIR / "timetable.yaml").exists(),
+        reason="synthetic data not generated (run notebook 0.0)",
+    )
+    def test_load_instance_builds_the_priced_problem(self, tmp_path):
+        import yaml
+
+        revenue_payload = yaml.safe_load((SYNTHETIC_DIR / "revenue.yaml").read_text())[
+            "services"
+        ]
+        cfg = ExperimentConfig(
+            timetable_path=SYNTHETIC_DIR / "timetable.yaml",
+            revenue_path=SYNTHETIC_DIR / "revenue.yaml",
+            verbose=False,
+        )
+        runner = ExperimentRunner(cfg, project_root=tmp_path)
+        runner.load_instance()
+
+        tt = runner.timetabling
+        assert tt is not None
+        assert tt.n_services == 50
+        assert len(tt.boundaries.real) == sum(
+            len(schedule) - 1 for schedule in tt.reference_schedules.values()
+        )
+        assert tt.revenue == revenue_payload
+        expected_rus = {str(params["ru"]) for params in revenue_payload.values()}
+        assert set(tt.capacities) == expected_rus
+        assert runner.paths["output_supply"] == SYNTHETIC_DIR / "timetable.yaml"

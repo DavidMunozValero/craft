@@ -45,6 +45,10 @@ class ExperimentConfig:
     n_services: int = 25
     without_conflicts: bool = False
 
+    # Notebook-0.0 instance (skips supply generation and revenue simulation)
+    timetable_path: Union[Path, None] = None
+    revenue_path: Union[Path, None] = None
+
     # Revenue simulation
     revenue_alpha: float = 2 / 3
 
@@ -81,6 +85,8 @@ class ExperimentConfig:
             "output_supply": _resolve(self.output_supply_path)
             if self.output_supply_path
             else None,
+            "timetable": _resolve(self.timetable_path) if self.timetable_path else None,
+            "revenue": _resolve(self.revenue_path) if self.revenue_path else None,
         }
 
 
@@ -175,6 +181,59 @@ class ExperimentRunner:
         self.paths["output_supply"] = path
         if self.config.verbose:
             print(f"Loaded {len(self.supply.services)} services from {path}")
+        return self.supply
+
+    def load_instance(
+        self,
+        timetable_path: Union[Path, None] = None,
+        revenue_path: Union[Path, None] = None,
+    ) -> Supply:
+        """Load the notebook-0.0 instance and build its timetabling problem.
+
+        The instance mode replaces supply generation and revenue
+        simulation: the services come from the robin-format
+        ``timetable.yaml`` and the revenue behavior from ``revenue.yaml``,
+        so every backend optimizes the exact same priced instance.
+
+        Args:
+            timetable_path: Path to the timetable YAML (fallback: the
+                configured ``timetable_path``).
+            revenue_path: Path to the revenue behavior YAML (fallback: the
+                configured ``revenue_path``).
+
+        Returns:
+            The loaded supply.
+        """
+        import yaml
+
+        timetable_path = timetable_path or self.paths["timetable"]
+        revenue_path = revenue_path or self.paths["revenue"]
+        if timetable_path is None or revenue_path is None:
+            raise ValueError(
+                "Instance mode requires both a timetable and a revenue YAML."
+            )
+        timetable_path, revenue_path = Path(timetable_path), Path(revenue_path)
+
+        with open(revenue_path) as handle:
+            revenue_payload = yaml.safe_load(handle)
+        with open(timetable_path) as handle:
+            metadata = yaml.safe_load(handle).get("metadata", {})
+
+        supply = Supply.from_yaml(path=str(timetable_path))
+        self.supply = supply
+        self.paths["output_supply"] = timetable_path
+        self.timetabling = MealpyTimetabling(
+            requested_services=supply.services,
+            revenue_behavior=revenue_payload["services"],
+            safe_headway=metadata.get("safe_headway", self.config.safe_headway),
+            max_stop_time=self.config.max_stop_time,
+        )
+        if self.config.verbose:
+            n_real = len(self.timetabling.boundaries.real)
+            print(
+                f"Loaded instance: {self.timetabling.n_services} services, "
+                f"{n_real} real variables from {timetable_path}"
+            )
         return self.supply
 
     def build_timetabling(
@@ -283,27 +342,42 @@ class ExperimentRunner:
             accuracy = float(np.sum(schedule)) / len(schedule)
             return revenue, accuracy
 
+        def repair(solution: Solution) -> Solution:
+            """Map a departure vector onto the feasible schedule the direct
+            encoding would decode (factibility by construction)."""
+            return Solution(
+                real=tt.repair_departures(solution.real),
+                discrete=np.array(solution.discrete, dtype=int),
+            )
+
+        initial = self._seeded_gsa_population(tt, boundaries)
+
         gsa = GSA(
             objective_function=gsa_objective,
             r_dim=n_real,
             d_dim=0,
             boundaries=boundaries,
+            is_feasible=lambda solution: False,
+            custom_repair=repair,
         )
         if self.config.verbose:
             print(
-                f"Running GSA (iters={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed})..."
+                f"Running GSA (iters={self.config.epoch}, pop={self.config.pop_size}, seed={self.config.seed}, repair=True)..."
             )
         gsa.optimize(
             population_size=self.config.pop_size,
             iters=self.config.epoch,
             seed=self.config.seed,
+            repair_solution=True,
+            initial_population=initial,
             verbose=False,
         )
 
         convergence = gsa.convergence
         assert gsa.best_solution is not None
+        real = tt.repair_departures(gsa.best_solution.real)
         schedule = tt.get_heuristic_schedule()
-        self.best_solution = Solution(real=gsa.best_solution.real, discrete=schedule)
+        self.best_solution = Solution(real=real, discrete=schedule)
         self.convergence = convergence
 
         n_scheduled = int(np.sum(schedule))
@@ -321,6 +395,29 @@ class ExperimentRunner:
             "n_total": len(schedule),
             "convergence": convergence,
         }
+
+    def _seeded_gsa_population(
+        self, tt: MealpyTimetabling, boundaries: Boundaries
+    ) -> list:
+        """Seeded initial population: the requested timetable plus repaired
+        random draws (the seeding GSA_M used before the craft port)."""
+        np.random.seed(self.config.seed)
+        requested = np.array(tt.reference_solution, dtype=float)
+        lower = np.array([pair[0] for pair in boundaries.real], dtype=float)
+        upper = np.array([pair[1] for pair in boundaries.real], dtype=float)
+        draws = np.random.uniform(
+            low=lower, high=upper, size=(self.config.pop_size - 1, len(lower))
+        )
+        population = [
+            Solution(
+                real=tt.repair_departures(requested), discrete=np.zeros(0, dtype=int)
+            )
+        ]
+        population.extend(
+            Solution(real=tt.repair_departures(draw), discrete=np.zeros(0, dtype=int))
+            for draw in draws
+        )
+        return population
 
     def _optimize_fairness(self) -> dict:
         from mealpy import FloatVar, GA

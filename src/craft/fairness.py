@@ -1,7 +1,7 @@
 """Fairness metrics for railway scheduling."""
 
 import numpy as np
-from typing import Mapping, Tuple
+from typing import Any, Mapping, Tuple
 
 
 class FairnessMetrics:
@@ -52,7 +52,7 @@ class FairnessMetrics:
 
     @staticmethod
     def sum_importance(
-        scheduled: np.ndarray, revenue: Mapping[str, dict]
+        scheduled: np.ndarray, revenue: Mapping[str, Mapping[str, Any]]
     ) -> Mapping[str, float]:
         """Sum importance by RU from scheduled services."""
         scheduled_by_ru: dict[str, float] = {}
@@ -67,7 +67,8 @@ class FairnessMetrics:
     def jains_fairness_index(
         scheduled: np.ndarray,
         capacities: Mapping[str, float],
-        revenue: Mapping[str, dict],
+        revenue: Mapping[str, Mapping[str, Any]],
+        alpha: float = 1.0,
     ) -> Tuple[float, Mapping[str, float]]:
         """
         Calculate Jain's fairness index for scheduled services.
@@ -76,6 +77,8 @@ class FairnessMetrics:
             scheduled: Boolean array indicating which services are scheduled.
             capacities: Capacity values for each RU.
             revenue: Revenue behavior mapping with 'ru' and 'importance' keys.
+            alpha: Sensitivity exponent applied to the capacity ratios before
+                the index (1.0 keeps the plain Jain index).
 
         Returns:
             Tuple of (fairness index [0,1], ratios dict)
@@ -88,6 +91,7 @@ class FairnessMetrics:
         ratios = {
             ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities
         }
+        ratios = {ru: ratio**alpha for ru, ratio in ratios.items()}
 
         n = len(ratios)
         if n == 0:
@@ -106,7 +110,7 @@ class FairnessMetrics:
     def gini_fairness_index(
         scheduled: np.ndarray,
         capacities: Mapping[str, float],
-        revenue: Mapping[str, dict],
+        revenue: Mapping[str, Mapping[str, Any]],
         alpha: float = 10.0,
     ) -> Tuple[float, Mapping[str, float]]:
         """
@@ -154,7 +158,7 @@ class FairnessMetrics:
     def atkinson_fairness_index(
         scheduled: np.ndarray,
         capacities: Mapping[str, float],
-        revenue: Mapping[str, dict],
+        revenue: Mapping[str, Mapping[str, Any]],
         alpha: float = 10.0,
         epsilon: float = 2,
     ) -> Tuple[float, Mapping[str, float]]:

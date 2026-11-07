@@ -9,6 +9,41 @@ import numpy as np
 from robin.supply.entities import Supply
 
 
+def cumulative_shifts(
+    deltas: np.ndarray,
+    dwells: np.ndarray,
+    im_mod_margin: int,
+    max_stop_time: int,
+) -> np.ndarray:
+    """Accumulate per-station deltas into downstream schedule shifts.
+
+    The first delta shifts the origin departure within the IM margin; the
+    remaining deltas are pure delays that accumulate downstream and are
+    clamped so that no dwell grows beyond ``max_stop_time``. The result is
+    feasible by construction: travel and stop times can never shrink.
+
+    Args:
+        deltas: Integer deltas for the departure at every non-final stop.
+        dwells: Original dwell minutes at the stops with a departure but the
+            first (one value per delta except the first).
+        im_mod_margin: Departure-time modification margin of the IM.
+        max_stop_time: Maximum dwell-time extension.
+
+    Returns:
+        Integer cumulative shift for every departure, with the same length as
+        ``deltas``. The shifts are non-decreasing, so travel and stop times
+        can never shrink.
+    """
+    shifts = np.empty(len(deltas), dtype=np.int64)
+    previous = int(np.clip(deltas[0], -im_mod_margin, im_mod_margin))
+    shifts[0] = previous
+    for j in range(1, len(deltas)):
+        upper = min(max_stop_time, previous + max_stop_time - int(dwells[j - 1]))
+        previous = int(np.clip(previous + deltas[j], previous, max(upper, previous)))
+        shifts[j] = previous
+    return shifts
+
+
 class ScheduleManager:
     """Manages service schedules and operational times."""
 

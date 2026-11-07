@@ -14,7 +14,7 @@ optimize the same landscape and remain comparable.
 """
 
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -92,6 +92,62 @@ def crowding_distance(values: np.ndarray) -> np.ndarray:
     return distance
 
 
+def knee_index(front: np.ndarray) -> int:
+    """Index of the front point closest to the ideal corner.
+
+    Objectives are min-max normalized over the front and the knee is the
+    point with the smallest Euclidean distance to the ideal (all-ones)
+    corner.
+
+    Args:
+        front: Objective matrix of the Pareto front, shape ``(n, m)``.
+
+    Returns:
+        Row index of the knee point within ``front``.
+    """
+    low = front.min(axis=0)
+    span = front.max(axis=0) - low
+    normalized = (front - low) / np.where(span > 0, span, 1.0)
+    return int(np.argmin(np.linalg.norm(normalized - 1.0, axis=1)))
+
+
+def hypervolume(values: np.ndarray, reference_point: Sequence[float]) -> float:
+    """Exact hypervolume of a two-objective front under maximization.
+
+    Only the points weakly dominating the reference point contribute; the
+    front is swept from the largest first objective to the smallest and the
+    covered area is accumulated per band of the first objective.
+
+    Args:
+        values: Objective matrix of shape ``(n, 2)``.
+        reference_point: Reference point dominated by the front of interest
+            (e.g. the nadir); points not dominating it are ignored.
+
+    Returns:
+        The dominated area between the front and the reference point.
+
+    Raises:
+        ValueError: If ``values`` does not hold exactly two objectives.
+    """
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return 0.0
+    if values.ndim != 2 or values.shape[1] != 2:
+        raise ValueError("hypervolume only supports two objectives")
+    ref = np.asarray(reference_point, dtype=float)
+    pts = values[(values[:, 0] >= ref[0]) & (values[:, 1] >= ref[1])]
+    if pts.shape[0] == 0:
+        return 0.0
+    order = np.argsort(pts[:, 0], kind="stable")
+    area = 0.0
+    ceiling = ref[1]
+    for i in range(pts.shape[0] - 1, -1, -1):
+        ceiling = max(ceiling, pts[order[i], 1])
+        left = pts[order[i - 1], 0] if i > 0 else ref[0]
+        area += (pts[order[i], 0] - left) * (ceiling - ref[1])
+    return float(area)
+
+
 class NSGA2:
     """NSGA-II solver for the revenue-maximization timetabling problem.
 
@@ -114,6 +170,9 @@ class NSGA2:
         pareto_genomes: Genomes of the final non-dominated front, sorted by
             descending first objective.
         pareto_values: Objective matrix of :attr:`pareto_genomes`.
+        pareto_history: Objective matrix of the first front at the end of
+            every generation, including the initial one (length
+            ``epoch + 1``); the raw material for hypervolume curves.
         execution_time: Seconds spent inside :meth:`optimize`.
     """
 
@@ -160,6 +219,7 @@ class NSGA2:
         self.convergence: np.ndarray = np.empty(0)
         self.pareto_genomes: np.ndarray = np.empty((0, 0), dtype=np.int64)
         self.pareto_values: np.ndarray = np.empty((0, 0))
+        self.pareto_history: List[np.ndarray] = []
         self.execution_time: float = 0.0
 
     def optimize(
@@ -188,6 +248,7 @@ class NSGA2:
         snapshots = np.empty((epoch + 1, self.problem.genome_size), dtype=np.int64)
         convergence[0] = self.best_fitness
         snapshots[0] = self.best_genome
+        pareto_history: List[np.ndarray] = [self._front(values)]
         records: List[Tuple] = [self._record(0, 0.0)]
 
         for generation in range(1, epoch + 1):
@@ -198,6 +259,7 @@ class NSGA2:
             self._track(population, values)
             convergence[generation] = self.best_fitness
             snapshots[generation] = self.best_genome
+            pareto_history.append(self._front(values))
             elapsed = time.time() - start
             records.append(self._record(generation, elapsed))
             if verbose:
@@ -210,6 +272,7 @@ class NSGA2:
         self.execution_time = time.time() - start
         self.convergence = convergence
         self.best_genomes = snapshots
+        self.pareto_history = pareto_history
         self.best_solution = self.problem.decode(self.best_genome)
         front = fast_non_dominated_sort(values)[0]
         order = np.argsort(-values[front, 0], kind="stable")
@@ -226,6 +289,11 @@ class NSGA2:
             [self._objectives(genome) for genome in population], dtype=float
         )
         return values.reshape(len(population), -1)
+
+    def _front(self, values: np.ndarray) -> np.ndarray:
+        """Objective matrix of the first non-dominated front."""
+        front = fast_non_dominated_sort(values)[0]
+        return np.array(values[front], copy=True)
 
     def _breed(
         self,

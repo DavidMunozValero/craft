@@ -10,7 +10,8 @@ from robin.supply.entities import TimeSlot, Line, Service, Supply
 from robin.supply.generator.entities import ServiceScheduler
 
 from ..revenue import RevenueCalculator
-from ..scheduling import ScheduleManager
+from ..fairness import FairnessMetrics
+from ..scheduling import ScheduleManager, cumulative_shifts
 from typing import List, Mapping, Tuple, Union
 
 
@@ -177,7 +178,14 @@ class MealpyTimetabling:
         self.conflict_matrix = self._get_conflict_matrix()
 
     def objective_function(self, solution: List[float]) -> float:
-        """Compute fitness for the optimization algorithm."""
+        """Compute fitness for the optimization algorithm.
+
+        With ``fair_index = None`` the fitness is the revenue of the
+        heuristic schedule; otherwise it is the multiplicative
+        ``revenue x fairness`` objective of the Fair-oriented formulation,
+        where the fairness index is computed over the capacity shares of
+        the scheduled services with the sensitivity exponent ``alpha``.
+        """
         solution_arr = np.array(solution, dtype=np.int32)
         self.schedule_manager.update_from_solution(solution_arr)
 
@@ -188,7 +196,42 @@ class MealpyTimetabling:
         schedule = self.get_heuristic_schedule()
 
         revenue = self.get_revenue(Solution(real=solution, discrete=schedule))
-        return revenue
+        if self.fair_index is None:
+            return revenue
+        return revenue * self.get_fairness(schedule)
+
+    def get_fairness(self, schedule: np.ndarray) -> float:
+        """Fairness of the heuristic schedule for the configured index.
+
+        Args:
+            schedule: Boolean array of scheduled services.
+
+        Returns:
+            The fairness index in ``[0, 1]`` (1.0 when nothing is
+            scheduled, so the null plan never wins the multiplicative
+            objective with a zero revenue).
+
+        Raises:
+            ValueError: If ``fair_index`` is not one of ``Jain``, ``Gini``
+                or ``Atkinson``.
+        """
+        if not np.any(schedule):
+            return 1.0
+        if self.fair_index == "Jain":
+            fairness, _ = FairnessMetrics.jains_fairness_index(
+                schedule, self.capacities, self.revenue, alpha=self.alpha
+            )
+        elif self.fair_index == "Gini":
+            fairness, _ = FairnessMetrics.gini_fairness_index(
+                schedule, self.capacities, self.revenue, alpha=self.alpha
+            )
+        elif self.fair_index == "Atkinson":
+            fairness, _ = FairnessMetrics.atkinson_fairness_index(
+                schedule, self.capacities, self.revenue, alpha=self.alpha
+            )
+        else:
+            raise ValueError(f"Unknown fairness index: {self.fair_index!r}")
+        return fairness
 
     def get_revenue(self, solution: Solution) -> float:
         """Compute total revenue for solution."""
@@ -223,7 +266,12 @@ class MealpyTimetabling:
         return dt_feasible and tt_feasible
 
     def get_heuristic_schedule(self) -> np.ndarray:
-        """Compute schedule using conflict-avoiding heuristic."""
+        """Compute schedule using conflict-avoiding heuristic.
+
+        Conflicting services enter one by one by descending revenue; ties
+        break deterministically by ascending service id, so the heuristic is
+        reproducible across processes.
+        """
         default_planner = np.array(
             [not cm.any() for cm in self.conflict_matrix.matrix], dtype=bool
         )
@@ -237,11 +285,11 @@ class MealpyTimetabling:
             sc: self.revenue_calculator.get_service_revenue(sc) for sc in conflicts
         }
         conflicts_revenue = dict(
-            sorted(conflicts_revenue.items(), key=lambda item: item[1])
+            sorted(conflicts_revenue.items(), key=lambda item: (-item[1], item[0]))
         )
 
         while conflicts_revenue:
-            s = next(reversed(conflicts_revenue))
+            s = next(iter(conflicts_revenue))
             default_planner[self.indexer[s]] = True
             conflicts_revenue.pop(s, None)
 
@@ -253,6 +301,63 @@ class MealpyTimetabling:
                 k: v for k, v in conflicts_revenue.items() if k not in conflicts_with_s
             }
         return default_planner
+
+    def repair_departures(self, real: np.ndarray) -> np.ndarray:
+        """Repair a departure vector into the feasible schedule the direct
+        encoding would decode.
+
+        Every service block is converted to cumulative shifts with respect
+        to the requested timetable; the first shift is clipped to the IM
+        margin (capped by the dwell allowance on services with intermediate
+        stops), the downstream increments are clipped to non-negative values
+        within the dwell cap, and the cumulative shifts of
+        :func:`craft.scheduling.cumulative_shifts` guarantee that travel and
+        stop times never shrink. The result passes the operational
+        feasibility filter by construction, and any already-feasible
+        schedule is a fixed point of the repair.
+
+        Args:
+            real: Flat departure vector in the problem layout (one value per
+                non-final stop of every service, in service order).
+
+        Returns:
+            Repaired flat departure vector (float minutes, same layout).
+        """
+        real = np.asarray(real, dtype=float).reshape(-1)
+        repaired = np.empty(real.shape[0], dtype=float)
+        offset = 0
+        for schedule in self.reference_schedules.values():
+            stops = list(schedule)
+            n_times = len(stops) - 1
+            requested = np.array(
+                [schedule[stops[j]][1] for j in range(n_times)], dtype=float
+            )
+            shifts_raw = np.round(real[offset : offset + n_times] - requested)
+            deltas = np.empty(n_times, dtype=np.int64)
+            deltas[0] = shifts_raw[0]
+            if n_times > 1:
+                deltas[1:] = np.diff(shifts_raw)
+            origin_upper = (
+                self.im_mod_margin
+                if n_times == 1
+                else min(self.im_mod_margin, self.max_stop_time)
+            )
+            deltas[0] = np.clip(deltas[0], -self.im_mod_margin, origin_upper)
+            if n_times > 1:
+                deltas[1:] = np.clip(deltas[1:], 0, self.max_stop_time)
+            dwells = np.array(
+                [
+                    schedule[stops[j]][1] - schedule[stops[j]][0]
+                    for j in range(1, n_times)
+                ],
+                dtype=np.int64,
+            )
+            shifts = cumulative_shifts(
+                deltas, dwells, self.im_mod_margin, self.max_stop_time
+            )
+            repaired[offset : offset + n_times] = requested + shifts
+            offset += n_times
+        return repaired
 
     def _calculate_boundaries(self) -> Boundaries:
         """Calculate boundaries for departure times."""

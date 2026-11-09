@@ -12,6 +12,11 @@ poetry lock && poetry install
 Requires a `robin` checkout at `../robin` — `poetry install` fails if it is
 missing. See "The `robin` dependency" below.
 
+The optional MO-baseline tooling (pymoo cross-check, Pyomo+SCIP ε-restriction
+reference in `scripts/run_pymoo.py` / `scripts/run_epsilon.py`) lives in an
+optional group: `poetry install --with baselines`. Its tests skip when the
+group is not installed.
+
 ### Test
 ```bash
 poetry run pytest tests/ -v
@@ -42,6 +47,9 @@ poetry run python scripts/run_mealpy.py -a ga --seed 42 --epoch 50 --pop-size 20
 poetry run python scripts/run_gsa.py --seed 42 --epoch 50 --pop-size 20
 poetry run python scripts/run_ga.py --seed 42 --epoch 100 --pop-size 40
 poetry run python scripts/run_fairness.py --alpha 0.7 --beta 0.3 --seed 42
+poetry run python scripts/run_comparison.py --methods all --seeds 7,21,42,63,84
+poetry run python scripts/run_battery.py --steps comparison,epsilon   # E1-E4 battery (resumable, --force to redo)
+poetry run python scripts/run_stats.py                                # E3 pairwise statistics on the battery
 ```
 
 ### Execute notebooks (validation)

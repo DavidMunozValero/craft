@@ -174,11 +174,21 @@ class FairnessMetrics:
 
         Returns:
             Tuple of (fairness index [0,1], ratios dict)
+
+        Raises:
+            ValueError: If any RU is left out of the schedule: with the
+                calibrated exponent the geometric-mean normalization breaks
+                down on zero ratios (the index would exceed 1 and explode
+                as the powered ratios approach zero), so a partial
+                allocation is rejected instead of silently mis-scored.
         """
         scheduled_sum = FairnessMetrics.sum_importance(scheduled, revenue)
 
         if not scheduled_sum:
             return 1.0, {}
+
+        if len(scheduled_sum) != len(capacities):
+            raise ValueError("Scheduled resources and capacities must match.")
 
         ratios = {
             ru: scheduled_sum.get(ru, 0) / capacities.get(ru, 1) for ru in capacities

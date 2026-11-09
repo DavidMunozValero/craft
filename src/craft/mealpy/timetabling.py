@@ -209,7 +209,10 @@ class MealpyTimetabling:
         Returns:
             The fairness index in ``[0, 1]`` (1.0 when nothing is
             scheduled, so the null plan never wins the multiplicative
-            objective with a zero revenue).
+            objective with a zero revenue). Schedules that leave a RU out
+            score 0.0 for Gini, whose definition demands every RU to be
+            scheduled: the multiplicative objective then steers the search
+            towards full-RU allocations instead of crashing mid-optimization.
 
         Raises:
             ValueError: If ``fair_index`` is not one of ``Jain``, ``Gini``
@@ -217,20 +220,21 @@ class MealpyTimetabling:
         """
         if not np.any(schedule):
             return 1.0
-        if self.fair_index == "Jain":
-            fairness, _ = FairnessMetrics.jains_fairness_index(
-                schedule, self.capacities, self.revenue, alpha=self.alpha
-            )
-        elif self.fair_index == "Gini":
-            fairness, _ = FairnessMetrics.gini_fairness_index(
-                schedule, self.capacities, self.revenue, alpha=self.alpha
-            )
-        elif self.fair_index == "Atkinson":
-            fairness, _ = FairnessMetrics.atkinson_fairness_index(
-                schedule, self.capacities, self.revenue, alpha=self.alpha
-            )
-        else:
+        metrics = {
+            "Jain": FairnessMetrics.jains_fairness_index,
+            "Gini": FairnessMetrics.gini_fairness_index,
+            "Atkinson": FairnessMetrics.atkinson_fairness_index,
+        }
+        if self.fair_index not in metrics:
             raise ValueError(f"Unknown fairness index: {self.fair_index!r}")
+        try:
+            fairness, _ = metrics[self.fair_index](
+                schedule, self.capacities, self.revenue, alpha=self.alpha
+            )
+        except ValueError as error:
+            if "capacities must match" not in str(error):
+                raise
+            fairness = 0.0
         return fairness
 
     def get_revenue(self, solution: Solution) -> float:

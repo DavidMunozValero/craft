@@ -20,6 +20,7 @@ from .common import Boundaries, ConflictMatrix, Solution
 from .fairness import FairnessMetrics
 from .revenue import RevenueCalculator, RevenueSimulator, penalty_function
 from .scheduling import ScheduleManager, get_schedule_from_supply
+from .stats import cliffs_delta, effect_magnitude, holm_correction, wilcoxon_signed_rank
 
 __version__ = "0.1.0"
 
@@ -34,6 +35,10 @@ __all__ = [
     "penalty_function",
     "ScheduleManager",
     "get_schedule_from_supply",
+    "cliffs_delta",
+    "effect_magnitude",
+    "holm_correction",
+    "wilcoxon_signed_rank",
     "GSA",
     "MealpyTimetabling",
     "GA",

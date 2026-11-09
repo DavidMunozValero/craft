@@ -1,0 +1,768 @@
+% =============================================================================
+% Esqueleto del tercer trabajo de la línea CRAFT.
+% Marco de trabajo: formulación bi-objetivo (ingresos del gestor de
+% infraestructuras ↔ equidad entre operadores) con factibilidad por
+% construcción y marco de evaluación común.
+% Compilación: pdflatex main.tex (dos pasadas para las referencias).
+% Los resultados de la batería E1-E4 están marcados con \pendiente{...}.
+% =============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+\newcommand{\pendiente}[1]{\textcolor{red}{[PENDIENTE: #1]}}
+\newcommand{\ru}{\textup{RU}}
+\newcommand{\im}{\textup{IM}}
+
+\title{De la optimización escalar con asignación heurística a la\\
+planificación bi-objetivo con factibilidad por construcción:\\
+un marco común para ingresos y equidad en mercados\\
+ferroviarios liberalizados\\
+\large Borrador de trabajo --- tercer trabajo de la línea CRAFT}
+
+\author{David Muñoz Valero\thanks{Universidad de Castilla-La Mancha.
+\texttt{david.munoz6@alu.uclm.es}}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+En un mercado ferroviario liberalizado, el gestor de infraestructuras
+recibe de las empresas operadoras solicitudes de circulación y debe decidir
+qué servicios admite y con qué horarios, con dos objetivos en tensión: los
+ingresos por el uso de la infraestructura y la equidad en el reparto entre
+operadores. Dos trabajos previos de esta línea abordaron el problema por
+separado. El primero maximizaba los ingresos mediante metaheurísticas, con
+un flujo de dos etapas: primero se ajustaban los horarios solicitados y
+después una regla constructiva decidía qué servicios operaban. El segundo
+incorporó la equidad mediante un objetivo único que multiplica los ingresos
+por un índice de equidad, fijando así el compromiso entre ambos objetivos
+antes de la búsqueda. Este trabajo unifica y corrige ambos enfoques con
+tres piezas: (i) una \emph{codificación directa} en la que la decisión de
+operar cada servicio y los ajustes de horario evolucionan juntas dentro del
+algoritmo genético, con las restricciones estructurales garantizadas por la
+propia representación y con los conflictos de separación reevaluados sobre
+cada horario propuesto; (ii) una \emph{formulación bi-objetivo} (ingresos
+penalizados $\leftrightarrow$ equidad entre operadores) resuelta con un
+algoritmo genético multiobjetivo que traza el conjunto completo de
+soluciones de compromiso en lugar de fijarlo \emph{a priori}; y (iii) un
+\emph{marco de evaluación común} que mide con la misma regla las soluciones
+de cualquier método y expone los defectos estructurales del flujo de dos
+etapas: conflictos surgidos tras la optimización, servicios operativamente
+inviables y equidad que no sobrevive al filtro de operatividad. La batería
+experimental abarca 12 instancias (25/50/75 servicios $\times$ 4 escenarios
+de cuota entre operadores), 8 métodos, 25 semillas, indicadores
+multiobjetivo completos con referencia exacta $\varepsilon$-restricción y
+contraste estadístico con corrección por comparaciones múltiples.
+\pendiente{Actualizar el resumen con los resultados de la batería y las
+conclusiones finales.}
+\end{abstract}
+
+\tableofcontents
+
+% =============================================================================
+\section{Introducción}
+\label{sec:introduccion}
+
+\paragraph{El problema.} En un mercado ferroviario liberalizado conviven
+varias empresas operadoras (\emph{railway undertakings}, \ru{}s en la
+notación de esta línea) que solicitan al gestor de infraestructuras (IM,
+\emph{infrastructure manager}) franjas de circulación sobre una red
+compartida. Cada solicitud describe un servicio --- origen, destino,
+paradas y horarios deseados --- y el IM debe construir el horario operativo:
+decide qué servicios admite y, cuando la capacidad no alcanza o los
+horarios chocan entre sí, los ajusta o los descarta. De cada servicio
+programado el IM percibe un canon, que se penaliza cuando el horario
+concedido se desvía del solicitado (más desvío, menor ingreso); y la
+asignación entre operadores debe ser equitativa, un principio que la
+normativa europea de espacios ferroviarios recoge expresamente. Son por
+tanto dos objetivos concurrentes: los ingresos del IM y la equidad del
+reparto.
+
+\paragraph{Los trabajos previos.} Esta línea ha abordado el problema en dos
+etapas. El primer trabajo \cite{paper1} formuló la maximización de los
+ingresos del IM sobre el simulador robin \cite{robin} y comparó diez
+metaheurísticas de la librería mealpy \cite{mealpy} en igualdad de
+condiciones; el algoritmo genético resultó el mejor método. Su flujo de
+resolución, sin embargo, era de \emph{dos etapas}: la metaheurística solo
+ajustaba los tiempos de salida de los servicios solicitados y, terminada la
+optimización, una regla constructiva ávida (en inglés, \emph{greedy},
+``avaricioso'') decidía qué servicios entraban finalmente en el horario,
+descartando de cada pareja de servicios en conflicto el menos rentable.
+El segundo trabajo \cite{paper2} incorporó la dimensión de equidad entre
+operadores mediante índices clásicos (Jain, Gini, Atkinson) adaptados a
+capacidades desiguales, y lo hizo con un objetivo único que multiplica los
+ingresos por el índice de equidad: la solución resultante depende así del
+peso implícito que esa multiplicación impone al compromiso
+ingresos--equidad, elegido \emph{antes} de la búsqueda.
+
+\paragraph{Tres defectos del flujo de dos etapas.} Un marco de evaluación
+común --- descrito en la sección~\ref{sec:evaluacion} --- permite verificar
+tres problemas estructurales del flujo publicado sobre una instancia de
+referencia con 50 solicitudes:
+
+\begin{enumerate}
+\item \textbf{Conflictos post-optimización.} En el flujo previo, los
+conflictos de separación entre servicios se calculan una sola vez, con los
+horarios \emph{solicitados}; durante la optimización de horarios esa matriz
+no se actualiza, de modo que mover una salida nunca puede resolver un
+conflicto. Las soluciones optimizadas reintroducen conflictos que el modelo
+no ve (2,6 en promedio por ejecución).
+\item \textbf{Servicios operativamente inviables.} La cota secuencial entre
+las salidas intermedias de un tren no se impone al muestrear candidatos:
+una parte de los servicios queda con horarios operativamente inviables
+(15,4 trenes operativos de media frente a 17 declarados).
+\item \textbf{Equidad no operativa.} La equidad que persigue el objetivo
+multiplicativo se mide sobre la máscara de servicios \emph{antes} del
+filtro de operatividad: la equidad declarada (0,93 en la mejor semilla) se
+desmorona al medir sobre los servicios realmente operables (0,40).
+\end{enumerate}
+
+\paragraph{El nuevo marco.} Frente a ello, este trabajo propone: (i) poner
+la decisión de operar cada servicio y los ajustes de horario \emph{dentro}
+del individuo del algoritmo genético (codificación directa), de forma que
+las restricciones estructurales se garantizan al decodificar y ningún
+candidato inviable consume evaluaciones; (ii) recalcular los conflictos
+sobre el horario propuesto en cada evaluación, de modo que mover horarios
+sí puede resolver conflictos; (iii) tratar ingresos y equidad como objetivos
+explícitos y concurrentes con un algoritmo genético multiobjetivo (NSGA-II
+\cite{deb2002}), trazando el conjunto de soluciones no dominadas --- el
+\emph{frente de Pareto}: aquellas en las que no se puede mejorar un objetivo
+sin empeorar el otro --- en lugar de fijar el compromiso \emph{a priori};
+y (iv) medir todas las soluciones, producidas por cualquier método, con el
+mismo evaluador.
+
+\paragraph{Contribuciones.} Cuatro contribuciones, numeradas C1--C4; el
+resto del texto se refiere a ellas con esas etiquetas:
+\begin{description}
+\item[C1 --- Codificación directa.] La máscara de servicios y los ajustes
+de horario evolucionan juntas; las restricciones estructurales se garantizan
+por construcción; los conflictos se reevalúan dinámicamente. Experimento de
+ablación (eliminar una pieza del método para aislar su contribución): el GA
+del primer paper frente al GA directo con idéntico presupuesto.
+\item[C2 --- Reformulación bi-objetivo.] Ingresos penalizados
+$\leftrightarrow$ equidad entre \ru{}s con un NSGA-II propio sobre el mismo
+genoma y operadores; el frente real frente a la ponderación \emph{a priori}
+del segundo trabajo. Ablación: con un solo objetivo, el NSGA-II degenera en
+un GA elitista equivalente.
+\item[C3 --- Marco de evaluación común.] Verificador de conflictos dinámico
+validado uno a uno contra robin, filtro de operatividad e índices de equidad
+con capacidades, que convierte los tres defectos anteriores en evidencia
+medible.
+\item[C4 --- Paquete reproducible.] Familia de 12 instancias versionadas con
+manifiesto, herramientas de línea de órdenes y batería de experimentos
+reanudable.
+\end{description}
+
+% =============================================================================
+\section{Modelo del problema y notación}
+\label{sec:modelo}
+
+Las \ru{}s solicitan un conjunto $SS=\{S_1,\dots,S_{|SS|}\}$ de servicios
+sobre un corredor; cada $S_i$ contiene su ruta y el horario solicitado
+$dt_i^j$ (salidas) y $at_i^j$ (llegadas), con $j$ indexando las estaciones
+del servicio. El IM decide la máscara de planificación $B_i \in \{0,1\}$ y
+los horarios actualizados $\tilde{dt}_i^j$, acotados por:
+
+\begin{itemize}
+\item el margen de modificación del IM: $dt_i^1 - \delta \le \tilde{dt}_i^1
+\le dt_i^1 + \delta$, con $\delta$ el margen admisible en la salida del
+origen (restricción 1);
+\item los tiempos de operación: $\tilde{dt}_i^j \ge \tilde{dt}_i^{j-1} +
+\tau_i + \sigma_i$, con $\tau_i$ el tiempo de marcha del tramo y $\sigma_i$
+el tiempo de parada (restricción 2);
+\item las extensiones máximas de parada: $\tilde{dt}_i^j \le dt_i^j +
+\Delta_{\max}$ (restricción 3) y $\tilde{dt}_i^j \le \tilde{dt}_i^{j-1} +
+\tau_i + \Delta_{\max}$ (restricción 4);
+\item los conflictos de separación sobre cada tramo de corredor compartido
+en el mismo sentido (restricción 6, sección~\ref{sec:conflictos}), con
+$\omega$ la distancia mínima de seguridad entre trenes (\emph{headway}).
+\end{itemize}
+
+Los ingresos del servicio $i$ --- el \emph{revenue} del IM en la
+terminología de los trabajos previos --- replican el modelo económico del
+primer trabajo: el canon $ca_i$ --- la tarifa que el operador pagaría si su
+solicitud se programara sin cambios --- se penaliza por el desvío respecto
+de lo solicitado según la sensibilidad $k_i$ del operador y los topes
+máximos de penalización $P_{DT_i}$ y $P_{TT_i}$, con las curvas
+$f(x,k) = 1 - e^{-kx^2}\big(0{,}5\cos(\pi x) + 0{,}5\big)$ aplicadas sobre
+el desvío normalizado por el margen $\delta$. La
+tabla~\ref{tab:notacion} resume la correspondencia y señala dónde cambia el
+tratamiento respecto de los trabajos previos.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Símbolo & Concepto & Tratamiento en este marco \\
+\midrule
+$SS$, $S_i$ & solicitudes de las \ru{}s & instancia sintética versionada \\
+$B_i$ & servicio planificado & \textbf{gen del individuo} (antes: regla posterior) \\
+$DT$ / $ODT$ & salidas solicitadas / actualizadas & genoma de ajustes $\to$ acumulados \\
+$\delta$, $\Delta_{\max}$ & margen del IM, tope de parada & cotas del genoma y del acotado \\
+$\tau_i$, $\sigma_i$ & tiempos de marcha y parada & invariantes por construcción \\
+$\omega$ & distancia mínima de seguridad & umbral $2\omega$ del conflicto dinámico \\
+$ca_i$, $k_i$, $P_{DT}$, $P_{TT}$ & canon y penalizaciones & idénticos al primer trabajo \\
+$C_{i,i'}$ & indicador de conflicto & \textbf{dinámico} sobre el horario propuesto \\
+$FSS$ & horario final & decodificado del mejor individuo \\
+\bottomrule
+\end{tabular}
+\caption{Correspondencia de notación y dónde cambia el tratamiento. El
+vocabulario genético se usa en su sentido estándar: un \emph{individuo} es
+una solución candidata completa y su \emph{genoma} su representación
+interna; una \emph{generación} es una iteración del algoritmo.}
+\label{tab:notacion}
+\end{table}
+
+% =============================================================================
+\section{Codificación directa y factibilidad por construcción}
+\label{sec:codificacion}
+
+Cada individuo es un vector de números enteros (minutos) con un bloque por
+servicio, $[B_i, \delta_i^1, \dots, \delta_i^{n_i-1}]$, donde $B_i$ decide
+si el servicio se planifica y cada $\delta_i^j$ es el ajuste en minutos
+sobre la salida solicitada de la estación con salida $j$. La decodificación
+acumula los desplazamientos aguas abajo y los acota (operación
+\emph{clip}: recortar al intervalo permitido) de manera que reproduce las
+restricciones 1--4 sin ninguna reparación posterior:
+
+\begin{align}
+s_i^1 &= \mathrm{clip}\big(\delta_i^1,\; -\delta,\; +\delta\big), \\
+s_i^j &= \mathrm{clip}\Big(s_i^{j-1} + \delta_i^j,\;\; s_i^{j-1},\;\;
+\min\big(\Delta_{\max},\; s_i^{j-1} + \Delta_{\max} - \sigma_i^j\big)\Big),
+\qquad j = 2,\dots,n_i-1, \\
+\tilde{dt}_i^j &= dt_i^j + s_i^j, \qquad
+\tilde{at}_i^{n_i} = \tilde{dt}_i^{n_i-1} + \tau_i^{n_i-1},
+\end{align}
+
+donde $s_i^j$ es el desplazamiento acumulado de la estación $j$. La cota
+inferior $s_i^j \ge s_i^{j-1}$ equivale exactamente a exigir
+$\delta_i^j \ge 0$: con ajustes no negativos, el tiempo entre salidas
+decodificadas es $(\tau_i + \sigma_i) + \delta_i^j \ge \tau_i + \sigma_i$,
+que es la restricción 2 escrita en otra coordenada --- el conjunto de
+soluciones factibles es idéntico y ninguna evaluación se desperdicia en
+horarios malformados. Combinando las cotas 2 y 3 se obtiene además una
+restricción derivada, no presente explícitamente en el primer trabajo: en
+un servicio con paradas intermedias el origen no puede retrasarse más allá
+de $\Delta_{\max}$ (restricción 5), que acota el primer gen del bloque.
+
+La única infactibilidad que un individuo puede arrastrar son los
+conflictos, gestionados por penalización directa en el objetivo --- sin
+llamar a ninguna heurística que ``arregle'' candidatos dentro del bucle:
+
+\begin{equation}
+F(g) \;=\; \sum_{i:\,B_i=1} r_i(g) \;-\;
+\lambda \sum_{\substack{(i,i') \in C(g)\\ B_i = B_{i'} = 1}}
+\min\big(r_i,\, r_{i'}\big),
+\label{ec:fitness}
+\end{equation}
+
+donde $r_i(g)$ son los ingresos del servicio con su horario decodificado y
+$\lambda = 2$: con $\lambda = 1$, mantener dos servicios en conflicto
+rendiría exactamente $\max(r_i, r_{i'})$ --- lo mismo que descartar el más
+barato --- y la búsqueda carecería de presión para resolver el conflicto.
+La regla constructiva del primer trabajo no se pierde: se conserva como
+método de comparación (sección~\ref{sec:metodos}) y se ejecuta fuera del
+bucle de optimización.
+
+% =============================================================================
+\section{Conflictos dinámicos y su lectura como separación ferroviaria}
+\label{sec:conflictos}
+
+Dos servicios comparten tramos del corredor. Para cada tramo compartido
+recorrido en el mismo sentido, con $\Delta dt_{i,i'} =
+\tilde{dt}_i^{a} - \tilde{dt}_{i'}^{a}$ y $\Delta at_{i,i'} =
+\tilde{at}_i^{b} - \tilde{at}_{i'}^{b}$ las diferencias de salida y llegada
+en sus extremos --- tiempos interpolados linealmente con la distancia en
+las estaciones de paso (hipótesis de movimiento rectilíneo uniforme) --- hay
+conflicto cuando:
+
+\begin{equation}
+C_{i,i'} = 1 \iff
+\Delta dt_{i,i'} \cdot \Delta at_{i,i'} \le 0
+\;\lor\; |\Delta dt_{i,i'}| \le 2\omega
+\;\lor\; |\Delta at_{i,i'}| \le 2\omega.
+\label{ec:conflicto}
+\end{equation}
+
+El producto negativo captura los cruces --- un tren sale antes y llega
+después, imposible en vía única --- y los umbrales $2\omega$ capturan la
+invasión mutua de las zonas de seguridad: cada tren ``lleva'' su margen
+$\omega$. La condición se evalúa sobre el \emph{horario propuesto} en cada
+evaluación, de modo que desplazar una salida puede eliminar un conflicto
+durante la búsqueda; en el flujo previo, con la matriz de conflictos fijada
+sobre los horarios solicitados, ese movimiento era invisible. El
+verificador propio está validado uno a uno contra la semántica del
+simulador robin en la instancia de referencia (103 de 103 pares
+idénticos).
+
+\paragraph{Lectura como separación ferroviaria.} La condición $2\omega$
+admite una lectura natural como sustituto macroscópico (en inglés,
+\emph{surrogate}) de la separación que impone la capa de protección
+ferroviaria: la escalera de tiempos de bloqueo (\emph{blocking times}) del
+bloque fijo convencional --- cuyo aprovechamiento se estudia con el método
+UIC 406 \cite{uic406} ---, las curvas de frenado del sistema europeo de
+gestión del tráfico ERTMS en su nivel 2, y el cantón móvil del nivel 3
+(\emph{moving block}) \cite{besinovic2021,vanaken2017}. La distancia
+$\omega$ parametriza, por tanto, el régimen de protección de la
+infraestructura, y el verificador dinámico comprueba la factibilidad del
+horario \emph{contra esa capa}: distingue el horario \emph{operable} del
+horario ``de papel''. El modelo es deliberadamente macroscópico a nivel de
+corredor --- sin cantones, curvas de frenado ni transiciones de nivel --- y
+esta conexión se usa solo como encuadre, no como contribución; la
+extensión a distancias de seguridad por pareja de trenes
+$\omega_{ij} = f(\tau_i, \tau_j)$, la esencia del cantón móvil, queda como
+trabajo futuro. El encuadre normativo es el de la Directiva
+2012/34/UE \cite{directiva201234}: asignación de capacidad sin
+discriminación entre operadores con contraprestaciones por uso.
+
+% =============================================================================
+\section{Formulación bi-objetivo: ingresos frente a equidad}
+\label{sec:biobjetivo}
+
+El segundo trabajo fijó el compromiso ingresos--equidad \emph{a priori},
+multiplicando los ingresos por el índice de equidad elegido de antemano. El
+nuevo marco lo trata como lo que es --- un problema con dos objetivos
+concurrentes --- con el vector
+
+\begin{equation}
+\mathbf{F}(g) = \big(F(g),\; J_{\alpha}\big(B(g)\big)\big),
+\qquad J_{\alpha} = \frac{\big(\sum_r \rho_r^{\alpha}\big)^2}
+{|\mathcal{R}| \sum_r \rho_r^{2\alpha}},
+\end{equation}
+
+donde $J_{\alpha}$ es el índice de Jain calibrado del segundo trabajo
+($\alpha = 25$) sobre los ratios sensible a capacidades
+$\rho_r = a_r / c_r$ entre la importancia lograda $a_r$ del operador $r$ y
+su capacidad $c_r$ (su cuota de servicios solicitados), y $B(g)$ es la
+máscara decodificada: la equidad depende solo de \emph{qué} servicios
+operan, los ingresos también de \emph{cómo}. El índice de Jain valora un
+reparto entre 0 (máxima inequidad) y 1 (equidad perfecta); el exponente de
+calificación $\alpha$ penaliza con fuerza los ratios desequilibrados.
+
+El compromiso que el IM extrae del frente se toma en el \emph{punto de
+rodilla} del frente (en inglés, \emph{knee}): la solución más próxima a la
+esquina ideal tras normalizar ambos objetivos entre 0 y 1 --- el compromiso
+en el que ya apenas se gana en un objetivo sin perder mucho en el otro.
+La elección del frente frente a la ponderación \emph{a priori} no es
+estética: el compromiso aceptable depende del contexto normativo y comercial
+de cada corredor, y el frente lo ofrece completo en una sola búsqueda,
+mientras que la ponderación exige reoptimizar por cada peso ensayado y solo
+garantiza el punto correspondiente a cada peso si la búsqueda escalar fuera
+perfecta.
+
+% =============================================================================
+\section{Métodos de resolución}
+\label{sec:metodos}
+
+Este trabajo propone dos variantes sobre la misma cabeza de problema ---
+un algoritmo genético mono-objetivo y un NSGA-II bi-objetivo --- y las
+compara con los métodos de los trabajos previos y con referencias externas.
+Esta sección describe cada algoritmo, su contexto y su papel.
+
+\subsection{El algoritmo genético con codificación directa}
+\label{sec:ga}
+
+El algoritmo genético es el método clásico de optimización poblacional:
+una población de soluciones candidatas que evoluciona por selección de los
+más aptos, recombinación y variación aleatoria. Sobre la codificación de la
+sección~\ref{sec:codificacion} se usan operadores que respetan la
+estructura por bloques --- cada bloque contiene la decisión de un servicio
+y sus ajustes, y ningún operador los separa:
+
+\begin{itemize}
+\item \textbf{Inicialización}: todos los servicios planificados y ajustes
+con ruido reducido alrededor de cero, es decir, la población parte de los
+horarios solicitados --- el escenario real de planificación y el de
+penalización mínima.
+\item \textbf{Selección}: torneo de tres individuos (gana el de mayor
+ingresos penalizados).
+\item \textbf{Cruce}: intercambio de bloques completos de servicio entre
+progenitores, de modo que la decisión sobre un servicio viaja siempre con
+sus ajustes.
+\item \textbf{Mutación}: inversión del bit de planificación (renunciar a un
+servicio), perturbación gaussiana entera de un ajuste en minutos, o
+devolución del ajuste a cero --- que significa ``dejar el servicio como lo
+solicitó el operador'', el movimiento semánticamente más útil.
+\item \textbf{Elitismo}: el mejor individuo pasa intacto a la generación
+siguiente, lo que garantiza una convergencia que nunca empeora.
+\end{itemize}
+
+\subsection{NSGA-II: contexto, funcionamiento y encaje}
+\label{sec:nsga2}
+
+\paragraph{Contexto.} La optimización multiobjetivo clásica agregaba los
+objetivos en uno solo antes de resolver --- sumas ponderadas o la
+restricción $\varepsilon$ --- lo que obliga a fijar o barrer el compromiso
+\emph{antes} de conocer el frente. El NSGA-II (\emph{Non-dominated Sorting
+Genetic Algorithm II}, Deb et al., 2002 \cite{deb2002}) popularizó el
+enfoque evolutivo: una única población busca simultáneamente todas las
+soluciones no dominadas y devuelve el frente completo.
+
+\paragraph{Funcionamiento.} Por generación, tras evaluar la población:
+
+\begin{enumerate}
+\item \textbf{Ordenación no dominada rápida}: la población se estratifica
+en frentes por dominación de Pareto; el primer frente es el conjunto de
+soluciones no dominadas, el segundo el que resulta al retirarlo, y así
+sucesivamente.
+\item \textbf{Distancia de hacinamiento}: dentro de cada frente, la
+densidad local de cada solución (distancia media a sus vecinas por
+objetivo); los extremos del frente tienen distancia infinita y se
+preservan siempre.
+\item \textbf{Torneos binarios con comparación jerárquica}: gana la
+solución de mejor rango; a igual rango, la menos hacinada --- presión
+hacia el frente y hacia su diversidad a la vez.
+\item \textbf{Selección ambiental $\mu+\lambda$}: progenitores y
+descendientes se fusionan y los supervivientes se toman frente a frente;
+el frente que excede el presupuesto se trunca por distancia de
+hacinamiento (elitismo: lo mejor nunca se pierde).
+\end{enumerate}
+
+\paragraph{Para qué problemas se usa.} Es el algoritmo de referencia de la
+optimización evolutiva multiobjetivo y el comparador estándar en la
+literatura: diseño de ingeniería con magnitudes en tensión (coste frente a
+prestaciones, peso frente a resistencia), planificación y asignación de
+recursos, y en general problemas con dos o tres objetivos en conflicto en
+los que el decisor quiere el conjunto de compromisos, no un punto. Para más
+de tres objetivos se prefieren otras familias de algoritmos; aquí solo hay
+dos.
+
+\paragraph{Encaje en nuestro problema.} Cuatro razones concretas: (i) los
+ingresos y la equidad están genuinamente en tensión --- admitir servicios
+menos rentables de operadores infrarrepresentados mejora la equidad y
+reduce los ingresos ---, de modo que existe un frente con contenido;
+(ii) el IM no conoce \emph{a priori} el compromiso aceptable, que depende
+del contexto normativo y comercial, así que el producto útil es el menú
+completo de compromisos; (iii) con dos objetivos, NSGA-II opera en su
+régimen más eficaz; y (iv) se integra sobre el mismo genoma y los mismos
+operadores que el GA, de modo que ambas variantes difieren únicamente en la
+selección y la comparación queda limpia. Con un solo objetivo ($M{=}1$), la
+ordenación no dominada colapsa en frentes de un elemento y el NSGA-II
+degenera en un GA elitista sobre la población fusionada: esa equivalencia
+permite, además, un experimento de ablación del tratamiento multiobjetivo.
+
+\subsection{Por qué se proponen dos variantes}
+\label{sec:dosvariantes}
+
+Las dos variantes propuestas responden a las dos preguntas del trabajo y
+comparten genoma, operadores y presupuesto, de modo que las diferencias
+observables se atribuyen a la formulación y no a la implementación:
+
+\begin{itemize}
+\item \textbf{GA directo (mono-objetivo)}: responde a ¿qué aporta la
+representación por sí sola? Optimiza los ingresos penalizados de la
+ecuación~\eqref{ec:fitness} y se compara con los métodos de dos etapas de
+los trabajos previos a igual presupuesto (ablación de la codificación
+directa, contribución~C1). Es, además, la continuidad directa con la
+formulación del primer trabajo.
+\item \textbf{NSGA-II (bi-objetivo)}: responde a ¿qué aporta el tratamiento
+multiobjetivo? Añade la equidad como segundo objetivo explícito y se
+compara con el barrido escalar del segundo trabajo (ablación de la
+formulación bi-objetivo, contribución~C2). La comparación entre $M{=}1$ y $M{=}2$ verifica que el
+beneficio proviene de la selección multiobjetivo y no del simple elitismo.
+Es, a su vez, la extensión natural de la formulación del segundo trabajo.
+\end{itemize}
+
+\subsection{Los métodos de comparación}
+\label{sec:comparadores}
+
+Los métodos restantes completan la comparación; cada uno con un papel
+definido:
+
+\begin{itemize}
+\item \textbf{Regla constructiva ávida del primer trabajo} (en inglés,
+\emph{greedy}, ``avaricioso''): parte del horario solicitado completo y
+descarta de cada pareja en conflicto el servicio menos rentable,
+iterativamente, hasta obtener un horario sin conflictos; no mueve ningún
+horario. Representa el techo de la asignación heurística: lo máximo que el
+esquema de dos etapas puede conseguir sin optimizar horarios.
+\item \textbf{GA de mealpy mono-objetivo}: el GA estándar de la librería
+mealpy \cite{mealpy} sobre las salidas reales, con la máscara derivada de
+la regla constructiva --- el flujo de dos etapas completo del primer
+trabajo, del que era el mejor de los diez algoritmos evaluados. Su
+comparación con el GA directo aísla la contribución de la codificación.
+\item \textbf{GSA con reparación}: el algoritmo de búsqueda gravitacional
+de la línea --- una población de ``masas'' que se atraen según la ley de
+la gravitación en proporción a su calidad --- con dos mecanismos añadidos:
+los ajustes de cada candidato se convierten en desplazamientos acumulados
+factibles (reparación, la misma pieza que la decodificación directa usa por
+construcción) y la población inicial se siembra con los horarios
+solicitados. Muestra que el segundo algoritmo de la línea, reparado,
+alcanza también el techo del esquema de dos etapas: la mejora no depende
+del algoritmo concreto sino de la representación.
+\item \textbf{Barrido escalar rev$\times$equidad del segundo trabajo}: los
+puntos que la formulación anterior obtenía fijando el compromiso \emph{a
+priori} (con Jain, Gini y Atkinson y sus exponentes calibrados); son los
+puntos que el frente del NSGA-II debe dominar o cubrir.
+\item \textbf{NSGA-II de pymoo}, librería externa de referencia en
+optimización multiobjetivo: validación independiente de nuestra
+implementación --- dos frentes obtenidos con maquinaria distinta sobre el
+mismo problema deben superponerse sin dominación mutua masiva (comparada
+con la métrica de cobertura, abajo). Otros algoritmos multiobjetivo quedan
+fuera del alcance: la tesis no es que NSGA-II sea el mejor algoritmo
+multiobjetivo, sino que la formulación bi-objetivo es la correcta.
+\item \textbf{Modelo exacto $\varepsilon$-restricción} (Pyomo, lenguaje de
+modelado algebraico, con el solucionador SCIP, de programación entera
+mixta): impone una equidad mínima $\varepsilon$ como restricción explícita
+sobre una formulación exacta de selección y resuelve a optimalidad;
+proporciona puntos de referencia óptimos para calibrar los indicadores.
+Solo en las instancias de 25 servicios --- más allá su resolución no
+escala, lo que se documenta como límite del modelo exacto, replicando el
+papel del solucionador exacto en el primer trabajo.
+\end{itemize}
+
+% =============================================================================
+\section{Marco de evaluación común}
+\label{sec:evaluacion}
+
+Toda solución producida por cualquier método --- vector de salidas más
+máscara de servicios --- se mide con el mismo evaluador:
+
+\begin{enumerate}
+\item \textbf{filtro de operatividad}: solo los servicios cuyos tiempos de
+operación decodificados se sostienen ganan ingresos y cuentan en la
+asignación por operador;
+\item \textbf{conflictos dinámicos} reevaluados sobre el horario propuesto
+con el verificador de la sección~\ref{sec:conflictos}, e ingresos penalizados
+según la ecuación~\eqref{ec:fitness};
+\item \textbf{equidad operativa}: los índices de Jain, Gini y Atkinson con
+capacidades y calibración del segundo trabajo, más la inequidad por
+diferencias entre pares de operadores, computados sobre la máscara
+\emph{operativa} (tras el filtro), no sobre la declarada.
+\end{enumerate}
+
+Este marco convierte la observación motivadora en evidencia medible: el
+flujo de dos etapas publicado acumula conflictos post-optimización y
+servicios inviables, y su equidad declarada difiere de la operativa. La
+distinción entre horario operable y horario ``de papel'' es, a la vez, la
+lectura como separación ferroviaria del verificador dinámico
+(sección~\ref{sec:conflictos}).
+
+% =============================================================================
+\section{Diseño experimental}
+\label{sec:diseno}
+
+\paragraph{Instancias.} Doce instancias del corredor Madrid--Barcelona,
+fruto de cruzar tamaños de 25, 50 y 75 servicios solicitados con 4
+escenarios de reparto entre operadores (tres operadores con cuotas
+muestreadas 50/25/25 --- la instancia de los trabajos previos --- y cinco
+operadores con cuotas exactas equilibradas 20\,\% cada uno, decrecientes
+suaves 30/25/20/15/10 y dominantes 55/25/10/5/5). Las cuotas fijan la
+capacidad de cada operador: la referencia contra la que se mide la equidad
+de su asignación. La familia es \emph{versionada}: cada instancia se genera
+una sola vez, con semilla fija, y queda congelada como artefacto acompañado
+de un manifiesto con sus cuotas, recuentos reales de servicios por operador
+y pares en conflicto solicitados; ningún método remuestrea los datos en
+tiempo de ejecución, de modo que todas las comparaciones se hacen sobre
+exactamente los mismos datos y cualquier ejecución futura es reproducible.
+La instancia de 50 servicios y tres operadores coincide con la de los
+trabajos previos, de modo que su línea base queda embebida en la familia.
+
+\paragraph{Métodos.} Los métodos comparados y el porqué de cada uno se
+describen en la sección~\ref{sec:metodos}: las dos variantes propuestas
+(GA directo y NSGA-II bi-objetivo), los métodos de dos etapas de los
+trabajos previos (regla constructiva ávida, GA de mealpy, GSA con
+reparación), el barrido escalar rev$\times$equidad del segundo trabajo y
+las dos referencias externas (NSGA-II de pymoo y modelo exacto
+$\varepsilon$-restricción en Pyomo+SCIP).
+
+\paragraph{Presupuesto y estadística.} Todas las metaheurísticas reciben el
+mismo presupuesto --- población de 40 individuos y 100 generaciones, es
+decir, 4.000 evaluaciones de la función objetivo --- para que la
+comparación dependa solo de la representación y la búsqueda, no del
+esfuerzo. Cada celda se ejecuta con 25 semillas y se compara con la prueba
+de los rangos con signo de Wilcoxon (para muestras emparejadas por semilla)
+con corrección de Holm por familia de comparaciones (el ajuste de los
+valores $p$ que evita declarar significativos resultados fruto del azar al
+contrastar muchas parejas a la vez), y el tamaño del efecto se cuantifica
+con la delta de Cliff (probabilidad de que un método supere a otro,
+menos la recíproca, en $[-1, 1]$) con sus bandas de magnitud estándar.
+
+\paragraph{Indicadores multiobjetivo.} Cuatro medidas complementarias
+evalúan la calidad de cada frente:
+
+\begin{itemize}
+\item \textbf{Hipervolumen}: el área que el frente domina por encima de un
+punto de referencia (su esquina peor); mayor es mejor y resume a la vez
+convergencia y diversidad.
+\item \textbf{Distancia generacional invertida} (IGD, por sus siglas en
+inglés, \emph{inverted generational distance}): distancia media de cada
+punto de referencia al punto más cercano del frente; menor es mejor y mide
+lo cerca que el frente está de la referencia.
+\item \textbf{Dispersión $\Delta$ de Deb}: uniformidad del espaciado entre
+soluciones contiguas del frente y su alcance hacia los extremos; menor es
+mejor.
+\item \textbf{Métrica de cobertura} (en inglés, \emph{C-metric}): fracción
+de las soluciones de un frente dominadas por algún punto de otro; se usa en
+ambas direcciones para comparar frentes.
+\end{itemize}
+
+El frente de referencia para la distancia generacional invertida se
+consolida como la unión de todos los frentes obtenidos más los puntos del
+modelo exacto. Criterio de aceptación de la tesis bi-objetivo: el frente de
+NSGA-II domina o cubre lo que el barrido escalar muestrea con todas sus
+configuraciones (cobertura alta e hipervolumen del frente al menos igual al
+de la unión de puntos escalares).
+
+\paragraph{Resultados preliminares.} La tabla~\ref{tab:baseline} congela la
+línea base sobre la instancia de referencia (50 servicios, tres operadores,
+103 pares en conflicto, 5 semillas, presupuesto idéntico). Junto a los
+ingresos crudos se reportan los ingresos penalizados de la
+ecuación~\eqref{ec:fitness} con $\lambda{=}2$: cada pareja de servicios en
+conflicto resta el doble del ingreso del más barato de los dos, de modo que
+mantener la pareja rinde siempre menos que descartar uno de sus servicios y
+la búsqueda tiene presión real para resolver los conflictos. La batería
+completa (12 instancias $\times$ 25 semillas) se reporta en
+la sección~\ref{sec:resultados}.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Método & Ingresos & Penalizados & Operativos & Conflictos & Jain oper. \\
+ & & ($\lambda{=}2$) & & & \\
+\midrule
+Regla ávida~\cite{paper1} & 729,53 & 729,53 & 17,0 & 0 & 0,33 \\
+GA-mealpy mono~\cite{paper1} & 583,05 $\pm$ 39,54 & 395,44 $\pm$ 117,79 & 15,4 $\pm$ 1,1 & 2,6 $\pm$ 1,8 & 0,37 $\pm$ 0,07 \\
+GA-mealpy rev$\times$Jain~\cite{paper2} & 456,30 $\pm$ 67,00 & 339,61 $\pm$ 24,95 & 12,2 $\pm$ 1,9 & 1,6 $\pm$ 1,1 & 0,40 $\pm$ 0,09 \\
+GSA con reparación & 728,82 $\pm$ 0,01 & --- & 17,0 $\pm$ 0,0 & 0,0 $\pm$ 0,0 & 0,33 $\pm$ 0,00 \\
+\textbf{GA directo} & \textbf{724,68 $\pm$ 27,30} & \textbf{724,68 $\pm$ 27,30} & \textbf{17,6 $\pm$ 0,9} & \textbf{0} & 0,44 $\pm$ 0,15 \\
+\textbf{NSGA-II bi-objetivo} & 723,79 $\pm$ 42,74 & 627,34 $\pm$ 35,07 & 17,6 $\pm$ 1,1 & 1,2 $\pm$ 0,8 & \textbf{0,85 $\pm$ 0,16} \\
+\bottomrule
+\end{tabular}
+\caption{Línea base congelada sobre la instancia de referencia (5 semillas,
+presupuesto idéntico). NSGA-II reporta el punto de rodilla del frente
+(sección~\ref{sec:codificacion}); los ingresos penalizados aplican la
+penalización por conflictos de la ecuación~\eqref{ec:fitness} con
+$\lambda{=}2$. El GSA con reparación alcanza
+el techo del esquema de dos etapas --- la regla ávida sobre los horarios
+solicitados --- de modo que el diferencial de la codificación directa está en
+la factibilidad sin parches, el número de trenes operativos y la extensión
+bi-objetivo.}
+\label{tab:baseline}
+\end{table}
+
+% =============================================================================
+\section{Resultados}
+\label{sec:resultados}
+
+\pendiente{Rellenar con la batería completa: (i) la figura principal de cada
+instancia (frente de NSGA-II frente a los puntos mono-objetivo y exactos);
+(ii) tabla resumen con media $\pm$ desviación, valores $p$ con corrección de
+Holm y delta de Cliff; (iii) curvas de hipervolumen y distancia generacional
+invertida por generación; (iv) escalabilidad 25/50/75; (v) ablaciones de
+codificación (GA con heurística frente a GA directo), de número de objetivos
+($M{=}1$ frente a $M{=}2$), del peso de conflicto $\lambda$, de la
+dominación por restricciones frente a penalización, del índice de equidad y
+su exponente, y del análisis $\omega \times \delta$ interpretado como
+regímenes de señalización; (vi) figura de conflictos-en-solicitados frente a
+conflictos-en-propuestos y de equidad declarada frente a operativa
+(robustez del marco de evaluación común, contribución~C3).}
+
+% =============================================================================
+\section{Discusión y limitaciones}
+\label{sec:discusion}
+
+El marco fortalece la formulación propia de los trabajos previos: el mensaje
+no es que los métodos anteriores sean incorrectos, sino que el evaluador
+común --- con verificador dinámico validado y filtro de operatividad ---
+revela tres defectos estructurales del flujo de dos etapas y los corrige de
+raíz mediante factibilidad por construcción. Limitaciones declaradas: el
+modelo es macroscópico a nivel de corredor (la condición de separación es un
+sustituto de origen ferroviario, no un modelo de ERTMS); la equidad depende
+solo de la máscara de servicios, de modo que el extremo de equidad del
+frente puede arrastrar conflictos (se discutirá con la variante de
+dominación por restricciones --- tratar los conflictos como restricciones
+de dominación en lugar de penalizarlos en el objetivo --- o como
+limitación); y el modelo exacto $\varepsilon$-restricción no escala más
+allá de 25 servicios, un límite del modelo exacto y no del método propuesto.
+
+% =============================================================================
+\section{Conclusiones y trabajo futuro}
+\label{sec:conclusiones}
+
+\pendiente{Conclusiones tras la batería. Trabajo futuro ya identificado:
+distancias de seguridad por pareja de trenes $\omega_{ij} = f(\tau_i,
+\tau_j)$ (esencia del cantón móvil), extensión del modelo exacto,
+transferencia a instancias reales de red y estudio de tarifas y cánones
+endógenos.}
+
+% =============================================================================
+\begin{thebibliography}{9}
+
+\bibitem{paper1}
+D.~Muñoz-Valero et al.
+\newblock An approach to the timetabling problem in deregulated railway
+markets based on metaheuristic algorithms.
+\newblock \pendiente{Datos de publicación (revista, año, DOI).}
+
+\bibitem{paper2}
+D.~Muñoz-Valero et al.
+\newblock Towards equitable rail service allocation through
+fairness-oriented timetabling in liberalized markets.
+\newblock \pendiente{Datos de publicación (revista, año, DOI).}
+
+\bibitem{deb2002}
+K.~Deb, A.~Pratap, S.~Agarwal, T.~Meyarivan.
+\newblock A fast and elitist multiobjective genetic algorithm: NSGA-II.
+\newblock \emph{IEEE Transactions on Evolutionary Computation},
+6(2):182--197, 2002.
+
+\bibitem{mealpy}
+T.~Van~Thieu, S.~Mirjalili.
+\newblock MEALPY: An open-source Python library for metaheuristic
+algorithms.
+\newblock \pendiente{Verificar revista y año (IEEE Access?).}
+
+\bibitem{robin}
+J.~A.~Martín-Baos et al.
+\newblock ROBIN: railway optimization and simulation.
+\newblock \pendiente{Cita de software: verificar referencias oficiales del
+repositorio.}
+
+\bibitem{besinovic2021}
+N.~Bešinović, R.~M.~P.~Goverde.
+\newblock Review of railway timetabling developments: planning phases,
+goals and future directions.
+\newblock \pendiente{Verificar revista y año.}
+
+\bibitem{vanaken2017}
+S.~Van~Aken, N.~Bešinović, R.~M.~P.~Goverde.
+\newblock Designing alternative railway timetables under infrastructure and
+temporal heterogeneity.
+\newblock \pendiente{Verificar datos (Transportation Research Part B,
+2017?).}
+
+\bibitem{uic406}
+UIC.
+\newblock Capacity (Leaflet 406) --- método UIC 406 de capacidad basado en
+tiempos de bloqueo.
+\newblock \pendiente{Verificar edición del folleto que se cita.}
+
+\bibitem{directiva201234}
+Parlamento Europeo y Consejo de la UE.
+\newblock Directiva 2012/34/UE por la que se establece un espacio único
+ferroviario europeo.
+\newblock DOUE, 2012.
+
+\bibitem{ertms}
+ERA / Comisión Europea.
+\newblock ERTMS factsheet: increasing infrastructure capacity.
+\newblock \pendiente{Verificar la referencia oficial exacta del documento
+(para la cifra $\sim$40\%).}
+
+\end{thebibliography}
+
+\end{document}

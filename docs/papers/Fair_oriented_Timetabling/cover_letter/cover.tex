@@ -1,0 +1,240 @@
+% UCLMletter_example.tex - an example latex file to illustrate UCLMletter.cls
+%
+% Template by Brian Wood (brian.wood@oregonstate.edu).
+% Modified by Yue Wu (contact.overleaf@wu-y.com) for PKU template.
+% And by José Ángel Martín Baos
+
+
+\documentclass[12pt]{UCLMletter}
+%\usepackage{fontspec} 
+\usepackage{tikz} 
+\usepackage{xcolor}
+	\definecolor{pkutheme}{RGB}{181,23,58}
+\usepackage{lipsum}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{eso-pic}
+\usepackage{url}
+\usepackage{newpxtext,newpxmath}
+
+%
+% Font Selection
+%\fontspec{inconsolata}
+%\setmonofont[]{inconsolata}
+%
+
+\usepackage[hidelinks]{hyperref}
+%
+% This section is just a bunch of busywork so that the second and following pages read ``Page X of Y''
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\rhead{Page \thepage \hspace{1pt} of \pageref{LastPage}}
+%
+
+\newcommand{\watermark}[2]{\AddToShipoutPictureBG{
+\parbox[b][\paperheight]{\paperwidth}{
+\vfill%
+\centering%
+\begin{tikzpicture}
+    \path (0,0) -- (\paperwidth,\paperheight);
+    \node[opacity=#2] at (current page.center)
+    {\includegraphics[width=0.55\textwidth]{#1}};
+    \end{tikzpicture}
+\vfill}}}
+
+% The material below is a whole big dang thing whose purpose is just to set up a fixed coordinate system for \tikz so that you can put the Department or School address in the upper right-hand side without it moving all around every time you change something in the page.  I think it works.
+% Defining a new coordinate system for the page:
+%
+% --------------------------
+% |(-1,1)    (0,1)    (1,1)|
+% |                        |
+% |(-1,0)    (0,0)    (1,0)|
+% |                        |
+% |(-1,-1)   (0,-1)  (1,-1)|
+% --------------------------
+\makeatletter
+\def\parsecomma#1,#2\endparsecomma{\def\page@x{#1}\def\page@y{#2}}
+\tikzdeclarecoordinatesystem{page}{
+	\parsecomma#1\endparsecomma
+	\pgfpointanchor{current page}{north east}
+	% Save the upper right corner
+	\pgf@xc=\pgf@x%
+	\pgf@yc=\pgf@y%
+	% save the lower left corner
+	\pgfpointanchor{current page}{south west}
+	\pgf@xb=\pgf@x%
+	\pgf@yb=\pgf@y%
+	% Transform to the correct placement
+	\pgfmathparse{(\pgf@xc-\pgf@xb)/2.*\page@x+(\pgf@xc+\pgf@xb)/2.}
+	\expandafter\pgf@x\expandafter=\pgfmathresult pt
+	\pgfmathparse{(\pgf@yc-\pgf@yb)/2.*\page@y+(\pgf@yc+\pgf@yb)/2.}
+	\expandafter\pgf@y\expandafter=\pgfmathresult pt
+}
+\makeatother
+
+
+%%------------------------------------------------------------------------------%%
+%
+
+%%%%%%%%%%% Put Recommender Information Here %%%%%%%%%%%
+%
+\def\name{José Ángel Martín Baos}
+%
+% List your degree(s), licences, etc. here if you like.
+%\def\What{, Your degrees, etc.} 
+%
+% Set the name of your Department or School here
+%%%%%%%%%%%%%%%%%%  School or Department %%%%%%%%%%%%%%%
+\def\Authors{
+	Dr. David Muñoz-Valero\\
+    Dr. Juan Moreno Garcia\\
+    Dr. Julio Alberto López-Gómez\\
+    D. Enrique Adrian Villarrubia-Martin
+}
+\def\Affiliation{
+	Escuela de Ingeniería Industrial y Aeroespacial de Toledo\\
+	University of Castilla-La Mancha
+}
+
+%%%%%%%%%%%%  Additional Contact Information %%%%%%%%%%%
+%
+% Set your preferred primary contact address here.
+\def\Address{Avenida Carlos III s/n. Campus Real Fábrica de Armas, Edificio 6} 
+\def\City{Toledo, Spain}
+\def\Zipcode{45071} 
+%
+% Set your e-mail here
+\def\Email{Juan.Moreno@uclm.es}
+%
+% Set your preferred contact number here
+\def\TEL{}
+%
+% Set your department or personal website here
+\def\URL{}
+%
+% \address{\Address{}}
+
+%%%%%%%%%%%%%%%%  Footer information  %%%%%%%%%%%%%%%%%%
+%
+\def\school{~} 
+%
+%%%%%%%%%%%%%%%%%%%%%  Signature line  %%%%%%%%%%%%%%%%%%%%%
+%
+% Set your signature line here.
+% One can add a signature image in a PDF file using the following code; this requires a file called "signature.pdf" to be installed in the same folder as the .tex file.  The vertical spacing (\vspace) and the scaling will have to be adjusted to get things to look correct for your particular signature image. Alternatively, comment out the following line in favor of the one labeled "[[Alternate]]" if you want to sign a paper copy of the letter.
+%
+%\signature{
+%	\vspace{-12mm}\includegraphics[width=18em]{signature.pdf}\\\vspace{-2mm}
+%	\name
+%}
+%\signature{\name}  % [[Alternate]]
+%%------------------------------------------------------------------------------%%
+
+
+
+% This block sets up the address on the right-hand side of the header. 
+%
+% The following lines just compile the information you set up into the LaTex letter variable "address" for later use.
+%
+%The following command "clears out" the default address so that it can be better set using \tikz
+\address{}
+
+\def\newaddress{
+	{\hspace{-4.2mm}
+    \Authors{}\\ 
+    \textbf{\color{pkutheme}\Affiliation}}\\ 
+	\Address{}\\ 
+	\City{}\\ 
+	%\Zipcode{}\\ 
+	%\textbf{\color{pkutheme}Tel}: \texttt{\TEL}\\ 
+	\textbf{\color{pkutheme}E-mail:} \href{mailto:\Email}{\texttt{\Email}}\\ 
+	%\textbf{\color{pkutheme}URL:} \url{\URL}
+}
+%
+%%%%%%%%%%%  DATE  %%%%%%%%%%%%%%%%%%%%%%%%%
+% If you want a date different from the current date, comment out the next line in favor of the line labeled "[[Alternate]]".  The ``\vspace{10mm}'' just moves the date down a tiny bit so it doesn't interfere with the header.  This can be adjusted to your preference.
+%
+\date{\vspace{10mm} \today}
+%\date{\vspace{10mm} 20 September 2020}  %[[Alternate]]
+%
+%%%%%%%%%%% Set the subject here if there is one  %%%%
+%\subject{Stuff} % optional subject line
+
+
+
+%%-----------------------------------------------------------------------------------------%%
+%
+\begin{document}
+	%
+	%
+	%%%%%%%%  The "To" address goes here.
+	%
+	\begin{letter}{
+%            F. Shun, G. Wang, Y. Yao, Q. Zhang and C. Tian\\
+%            Guest Editors\\
+%			IEEE Transactions on Fuzzy Systems\\
+%            Special Issue on Fuzzy Systems Toward Human-Inspired Computational Intelligence in Complex Systems
+		}
+		% This line sets up the return address to the right-side of the PKU logo.  The location is set with absolute node addresses using ``\tikz''.  It can still be a bit fussy, and you may need to alter this a little to get things to look right.  The bit that changes the position are the numbers in parentheses ``at (14.2,2.7)''
+		%
+		\begin{tikzpicture}[remember picture,overlay,,every node/.style={anchor=center}]
+		\node[text width=7cm] at (page cs:0.5,0.73){\small \newaddress};
+		\end{tikzpicture} 
+		
+		%%%%%%  The ``opening'' is just the method of address you would like to use at the start of the letter.
+		%
+		\opening{Dear Editor-in-Chief and Reviewers,}
+		
+		
+		%%%%%%%%%% Body of letter   %%%%%%%%%%%%%%
+		% Remove it if you do not want watermark
+		%\watermark{UCLM-logo.pdf}{0.05}
+		
+		%%%%%%%%%%% 	Text   %%%%%%%%%%%%%%
+		
+        I am writing to submit the manuscript entitled, “\textbf{Towards Equitable Rail Service Allocation Through Fairness-Oriented Timetabling in Liberalized Markets}” for consideration for publication in \textbf{Computers \& Industrial Engineering}.
+        
+        We confirm that:
+\begin{itemize}
+    \item This is an original unpublished work.
+    \item All authors approved the manuscript and this submission, and they have had an active participation in it.
+    \item The authors declare there is no conflict of interest.
+    \item This manuscript does not include any text generated from a large-scale language model (LLM) such as ChatGPT.
+    \item The English of this article has been reviewed by a specialized service.
+\end{itemize}
+
+The \textbf{computational novelty of the paper beyond the published literature} can be summarized in the major contributions. They are:
+\begin{itemize}
+    \item A model tailored to the fairness-oriented timetabling problem in a liberalized railway market, addressing the interplay between competition and cooperation among infrastructure managers (IM) and railway undertakings (RUs).
+    \item The addaptation and application of different equity metrics (Jain, Gini \& Atkinson) in conjunction with a Genetic Algorithm to tackle the timetabling problem.
+    \item An experimental evaluation of the applicability of the proposed framework to the fairness-oriented timetabling problem, analyzing solution quality, convergence, and hyperparameter sensitivity.
+\end{itemize}
+
+\textbf{With respect to the significant real-life problem the research addresses:} Efficient train scheduling and timetable allocation is crucial for maximizing infrastructure capacity and utilization while ensuring that the requests from various operators are managed in a fair and coordinated manner. In the context of the growing liberalization of the European railway market—where intensified competition and potential conflicts over simultaneous resource allocation are common—advanced optimization tools are indispensable. These solutions, grounded in equity criteria and heuristic strategies, not only boost the revenues of infrastructure managers but also foster a more competitive and sustainable railway system for all stakeholders.
+
+\textbf{And finally, regarding the significant findings of the research:} Our study reveals that while revenue-driven scheduling strategies can yield higher economic gains, they also lead to markedly uneven allocations of rail capacity among operators. By integrating a genetic algorithm with adapted fairness metrics, our approach demonstrates that a fairness-oriented strategy consistently results in a more balanced distribution of resources, even if it incurs a reduction in revenue. Notably, the successful calibration of sensitivity parameters ensures that even minor deviations from equitable allocation are effectively penalized. These results underscore the inherent trade-off between efficiency and equity in railway scheduling and provide valuable insights into tackling the complex challenges of timetabling in deregulated railway systems.
+
+We believe our work fits into the scope of Computers \& Industrial Engineering. Thank you for receiving our manuscript and considering it for review. We appreciate your time and look forward to your response.
+
+		%%%%%%% ``closing'' sets the sign-off line.
+		\closing{Yours incerely,\\
+            \noindent % Stop paragraph indentation
+	        \hspace*{\longindentation}
+            \parbox{\indentedwidth}{
+    		  \vskip 0.25cm 
+    		  The authors.
+	        }
+        }
+		
+		% Comment out/in the lines below as necessary
+		%\encl{If an enclosure is provided, let them know what it is.}
+		
+		%\ps{A postscript if that is a thing you do.}
+		
+		%\cc{Someone Who Cares (and is copied).}
+		
+	\end{letter}
+	
+\end{document}

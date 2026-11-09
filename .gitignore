@@ -68,3 +68,14 @@ models/
 # ---- Logs / misc ----
 *.log
 logs/
+
+# ---- LaTeX build artifacts (paper sources in docs/papers/) ----
+*.aux
+*.out
+*.toc
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.spl

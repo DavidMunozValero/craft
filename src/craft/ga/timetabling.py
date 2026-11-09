@@ -7,7 +7,7 @@ downstream when decoded, so the IM modification margin, the operating times
 and the dwell caps hold by construction; inter-service conflicts are the only
 remaining constraint and are handled as a fitness penalty.
 
-The full design is described in ``docs/plan_ga_direct_encoding.md``.
+The full design is described in ``docs/04_direct_encoding.md``.
 """
 
 from collections import defaultdict

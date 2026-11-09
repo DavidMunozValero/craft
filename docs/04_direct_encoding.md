@@ -552,7 +552,7 @@ formaliza con dos protocolos en `craft/ga/base.py`:
 > reporta conflictos por generación, así que su contrato declarado es
 > `DiagnosableProblem`; pero un solver externo que no quiera reporting puede
 > apoyarse solo en `Problem`. La cabeza `GATimetabling` implementa ambos, y
-> el documento de `optimizers.md` documenta el patrón de integración con un
+> el documento de `03_optimizers.md` documenta el patrón de integración con un
 > ejemplo.
 
 ```mermaid
@@ -765,8 +765,8 @@ añaden oportunidades de conflicto.
 > al horario "de papel" que resultaría de fijar la matriz de conflictos solo
 > con los horarios solicitados. Esta lectura, con su encuadre regulatorio
 > (Directiva 2012/34/UE y reglamento de capacidad TTR) y su colocación en el
-> manuscrito, se registra en `docs/plan_paper3_publication.md` (sección 3b y
-> riesgos). El modelo sigue siendo macroscópico a nivel corredor: la condición
+> manuscrito, se registra en `docs/05_paper3_plan.md` (sección de encuadre
+> ERTMS y riesgos). El modelo sigue siendo macroscópico a nivel corredor: la condición
 > es un surrogate de la separación, no un modelo de ETCS.
 
 ---
@@ -814,7 +814,8 @@ en uno de estos ficheros, con tests que la fijan.
 | `scripts/run_ga.py` | CLI: instancia → GA → CSVs + filmstrips en `data/results/` |
 | `notebooks/6.0-GA_Direct_Encoding.ipynb` | exploración visual (individuos, decodificación, evolución, mejor horario) |
 | `tests/test_ga*.py` | ejemplo 8:05/9:05/10:06, factibilidad por construcción, checker vs robin, fitness analítico, determinismo, operadores, plotting, e2e del script |
-| `docs/plan_ga_direct_encoding.md` | plan de trabajo y decisiones de diseño |
+| `docs/04_direct_encoding.md` | este documento: formulación y decisiones de diseño |
+| `docs/05_paper3_plan.md` | plan del tercer paper: batería final, decisiones y backlog |
 
 Cada bloque de este documento enlaza con su implementación; para una lectura
 alternativa orientada a la experimentación, el cuaderno 6.0 recorre el mismo

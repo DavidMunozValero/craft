@@ -85,7 +85,7 @@ matrix.
 | `craft.ga.operators` | `BlockOperators` — the shared block-aware variation operators (seeded initial population, block crossover, gaussian mutation with reset events) used by every genetic backend. |
 
 > Full formulation, equations mapped to the code and Mermaid diagrams of the
-> data flow: `docs/approach_ga_direct_encoding.md` (Spanish, follows the
+> data flow: `docs/04_direct_encoding.md` (Spanish, follows the
 > notation of the TimetablingProblemRailway paper).
 | `craft.ga.plotting` | Genome heatmap and filmstrip, Marey views (`plot_timetable`, `plot_timetable_filmstrip`) and the run summary (`plot_evolution`). |
 
@@ -131,8 +131,11 @@ convergence CSV, best-schedule CSV and evolution filmstrips under
 `data/results/`). For comparative experiments,
 `scripts/run_comparison.py` runs the full method × seed grid on one priced
 instance with the common evaluator (`craft.ga.evaluation`) and writes
-`runs.csv`, `summary.csv`, per-run convergences, measured Pareto fronts and
-knee schedules under `data/results/benchmark/<instance tag>/`.
+`runs.csv`, `summary.csv`, `indicators_nsga2.csv`, per-run convergences,
+measured Pareto fronts and knee schedules under
+`data/results/benchmark/<instance tag>/`. Any member of the instance family
+(`data/synthetic/instances/<tag>/`, E1) is consumed via
+`--timetable/--revenue`.
 
 ## NSGA-II (direct encoding)
 
@@ -192,6 +195,82 @@ optimize → save convergence CSV, Pareto-front CSV, knee-point schedule CSV,
 hypervolume CSV and the Pareto scatter / hypervolume figures under
 `data/results/`). The knee is the front point closest to the ideal corner
 after min-max normalization.
+
+### Pareto-front quality indicators
+
+`craft.ga.indicators` is the measurement standard for comparing fronts
+produced by different methods (own NSGA-II, external baselines, scalar
+sweeps, exact reference points), all under the maximization convention:
+
+| Indicator | Function | Reads |
+|---|---|---|
+| Normalized hypervolume | `normalized_hypervolume(front, reference)` — min-max normalization against the reference set (e.g. the union of compared fronts), reference point at the nadir corner; scale-free. |
+| Inverted generational distance | `igd(front, reference)` — mean Euclidean distance from each reference point to its nearest front point (lower is better; normalize with `min_max_normalize` when objectives have different scales). |
+| Spread (Deb's delta) | `spread(front, reference)` — relative uniformity and extent against the reference extremes (lower is better). |
+| Set coverage | `c_metric(a, b)` — fraction of `b` weakly dominated by `a` (higher is better). |
+
+`ideal` / `nadir` expose the corners of a front set and
+`min_max_normalize(values, low, high)` the shared scaling. The comparison
+grid writes them per seed against the union of NSGA-II fronts in
+`indicators_nsga2.csv` (all three in scale-free units).
+
+### External baselines (optional `baselines` group)
+
+Two validation harnesses for the publication battery live as top-level
+scripts; both need the optional dependency group
+(`poetry install --with baselines`) and their tests skip without it.
+
+**pymoo cross-check** (`scripts/run_pymoo.py`): runs the craft NSGA-II and
+pymoo's reference NSGA-II over the same genome layout, objectives and
+budget. The adapter (`PymooAdapter`) relaxes the integer genome to reals
+within the layout bounds, negates the (maximization) objectives — pymoo
+minimizes — and rounds genes back to integers at evaluation time; pymoo
+brings its own SBX/PM operators, so the comparison isolates the NSGA-II
+machinery from the operator design. Both fronts are measured with the common
+evaluator and compared with the indicators above (`pymoo_crosscheck.csv`,
+per-seed fronts under `data/results/pymoo/`); the validation criterion is
+set coverage without massive mutual domination.
+
+**Exact ε-constraint reference** (`scripts/run_epsilon.py`): Pyomo + SCIP
+selection-level model over the requested timetables — binary planning mask,
+pairwise conflict-freeness over the requested schedules, canon-revenue
+objective — restricted by a balance level ``t``: every RU's
+achieved-vs-capacity ratio must lie in ``[t·u, u]`` for a common ``u`` (all
+RUs participate, no ratio exceeds ``1/t`` times another's). This is a
+sufficient condition for the capacity-aware Jain floor ``t**50`` at the
+alpha=25 calibration, and the level is *sufficient, exact and nested*: the
+MILP per level is solved to optimality and max revenue is non-increasing in
+``t``. Restricting the Jain index directly was tried and rejected: the
+calibrated index raises ratios to the power 25, so the polynomial constraint
+evaluates around 1e-7, below branch-and-bound tolerances — the solver then
+declares violated solutions optimal (observed on n25_r3). The linear balance
+formulation sidesteps it, and levels that the discrete importance weights
+cannot satisfy (e.g. ``t=1``, exact proportionality) are certified
+infeasible instead of silently relaxed. Measured points land in
+`epsilon_reference.csv` under `data/results/epsilon/<instance tag>/`;
+typical read-out on the 25-service instance: the exact conflict-free
+selection reaches 457.59 vs the greedy 421.23, and revenue decays
+monotonically as the balance tightens.
+
+### Battery orchestration (E1-E4) and statistics (E3)
+
+`scripts/run_battery.py` reads the instance-family manifest and drives the
+harnesses per instance as subprocesses: the comparison grid (all methods,
+plus the rev*fair sweep of the second paper emitted as one
+`ga_mealpy_fair_<index>` method per `--fair-indices` entry, each with its
+calibrated alpha), the exact ε-constraint reference (only 25-service
+instances, per the plan) and the pymoo cross-check. The NSGA-II itself runs
+on the revenue-Jain axis of the paper. Steps whose artifact already exists
+are skipped, so a battery run is resumable; `--force` redoes them, and a
+failed subprocess is reported at the end with a nonzero exit.
+
+`scripts/run_stats.py` walks the battery directories and writes `stats.csv`
+next to every `runs.csv`: one row per (metric, method pair) with the
+seed-paired Wilcoxon signed-rank test, the Cliff's delta effect size and its
+Romano magnitude band, and the Holm step-down correction within each
+(instance, metric) family — the experiment-E3 protocol (20-30 seeds passed
+via `--seeds`). The underlying tools live in the shared layer
+(`craft.stats`), with known-case tests.
 
 ## mealpy backends
 

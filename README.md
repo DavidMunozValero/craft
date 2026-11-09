@@ -63,6 +63,13 @@ poetry lock       # resolve craft + robin into poetry.lock
 poetry install    # create the virtualenv and install everything
 ```
 
+External MO baselines (pymoo cross-check, Pyomo+SCIP exact reference points)
+live in an optional group and are only needed for the paper-3 battery:
+
+```bash
+poetry install --with baselines
+```
+
 This creates a single Poetry-managed virtualenv with:
 
 - `robin` in **editable mode** from `../robin` (a `.pth` file pointing at its
@@ -163,7 +170,7 @@ poetry run jupyter notebook notebooks/
 
 | Notebook | Description |
 |---|---|
-| `0.0-Synthetic_Data_Generator` | Synthetic timetable + canon/penalties for the Madrid–Barcelona line (two standalone YAMLs in `data/synthetic/`) |
+| `0.0-Synthetic_Data_Generator` | Synthetic timetable + canon/penalties for the Madrid–Barcelona line (two standalone YAMLs in `data/synthetic/`) plus the E1 instance family (sizes 25/50/75 × RU-quota scenarios, with manifest, in `data/synthetic/instances/`) |
 | `1.0-Supply_Generator` | Generate a supply and visualize it with a Marey chart |
 | `2.0-Capacity_Allocation` | Compare GA/DE/PSO/SCA across seeds; boxplots, convergence, Wilcoxon test |
 | `3.0-Fairness_Timetabling` | Fairness-aware optimization (revenue + Jain/Gini/Atkinson) |
@@ -197,7 +204,7 @@ src/craft/
 **Layering**: the shared layer (`common`, `revenue`, `scheduling`, `fairness`)
 is independent; both optimization backends (`gsa`, `mealpy`) depend on it.
 The `runner` orchestrates the full pipeline. See
-[docs/architecture.md](docs/architecture.md) for details.
+[docs/01_architecture.md](docs/01_architecture.md) for details.
 
 ---
 
@@ -219,6 +226,7 @@ craft/
   configs/            Supply and generator configuration YAMLs
   data/results/       Generated supply YAMLs and convergence CSVs (gitignored)
   data/synthetic/     Synthetic timetable/revenue YAMLs for the Madrid–Barcelona line (gitignored)
+  └── instances/      E1 family: 25/50/75 services × RU-quota scenarios, with manifest.yaml
   docs/               Project documentation
   notebooks/          Jupyter notebooks (1.0 → 5.0)
   reports/figures/    Generated plots (gitignored)
@@ -233,24 +241,30 @@ craft/
 
 ## Documentation
 
-### Empezando desde cero (papers ↔ código)
-
-1. [docs/research_context.md](docs/research_context.md) — contexto de
-   investigación: problema, los dos papers del proyecto y sus formulaciones.
-2. [docs/papers/README.md](docs/papers/README.md) — guía de las fuentes
-   LaTeX de los papers (versiones y cuál leer).
-3. [docs/paper_code_mapping.md](docs/paper_code_mapping.md) — mapeo
-   ecuación a ecuación entre papers y módulos, con discrepancias.
-4. [docs/audit_2026-11.md](docs/audit_2026-11.md) — auditoría del
-   repositorio y backlog priorizado.
+Los documentos de `docs/` están numerados en orden de lectura; el índice con
+la guía por rol vive en [docs/README.md](docs/README.md).
 
 ### Referencia técnica
 
-- [docs/architecture.md](docs/architecture.md) — architecture and data flow
-- [docs/problem_formulation.md](docs/problem_formulation.md) — revenue and
-  fairness formulation
-- [docs/optimizers.md](docs/optimizers.md) — GSA vs mealpy backends and how to
-  add new algorithms
+- [docs/01_architecture.md](docs/01_architecture.md) — architecture and data
+  flow
+- [docs/02_problem_formulation.md](docs/02_problem_formulation.md) — revenue
+  and fairness formulation
+- [docs/03_optimizers.md](docs/03_optimizers.md) — backends (GSA, mealpy, GA,
+  NSGA-II), indicators and how to add new algorithms
+
+### Trabajo actual (paper 3)
+
+- [docs/04_direct_encoding.md](docs/04_direct_encoding.md) — formulación
+  detallada del encoding directo (notación del paper 1 ↔ código)
+- [docs/05_paper3_plan.md](docs/05_paper3_plan.md) — plan de la batería
+  final: decisiones congeladas, diseño experimental, análisis y backlog
+
+### Papers
+
+- `docs/papers/TimetablingProblemRailway/` — paper 1 (fuentes LaTeX)
+- `docs/papers/Fair_oriented_Timetabling/` — paper 2 (fuentes LaTeX)
+- `docs/papers/BiObjective_Direct_Encoding/` — paper 3 (esqueleto)
 
 ---
 
